@@ -4,7 +4,7 @@ For this homework, you will implement classification trees and random forests th
 
 You will implement classification trees and random forests as classes (Tree, RandomForest) that provide a method build, which returns the model as an object, whose predict method returns the predicted target class of given input samples (see attached code for usage examples):
 
-Tree - a flexible classification tree with the following attributes: (1) rand, a random generator, for reproducibility, of type random.Random; (2) get_candidate_columns, a function that returns a list of column indices considered for a split (needed for the random forests); and (3) min_samples, the minimum number of samples, where a node is still split further. Use the Gini impurity to select the best splits.
+Tree - a flexible classification tree with the following attributes: (1) rand, a random generator, for reproducibility, of type random.Random; (2) get_candidate_columns, a function that returns a list of column indices considered for a split (needed for the random forests); and (3) min_samples, the minimum number of samples, where a node is still split further. Use the _gini impurity to select the best splits.
 
 RandomForest, with attributes: (1) rand, a random generator; (2) n: number of
 bootstrap samples. The RandomForest should use an instance of Tree internally. Build full trees (min_samples=2). For each split, consider random (square root of the number of input variables) variables.

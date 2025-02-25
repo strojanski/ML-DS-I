@@ -2,84 +2,96 @@ import csv
 import numpy as np
 import random
 from collections import Counter
-from sklearn.metrics import accuracy_score
+import time
+
 
 def all_columns(X: np.ndarray, rand: int):
     return range(X.shape[1])
 
 
 def random_sqrt_columns(X: np.ndarray, rand: random.Random):
-    n_cols = int(np.sqrt(X.shape[1]))  
-    cols = rand.sample(range(X.shape[1]), n_cols)  
+    n_cols = int(np.sqrt(X.shape[1]))
+    cols = rand.sample(range(X.shape[1]), n_cols)
+
     return cols
 
 
 class Tree:
-    
-    def __init__(self, rand: random.Random = None,
-                 get_candidate_columns = all_columns,
-                 min_samples: int = 2):
+
+    def __init__(
+        self,
+        rand: random.Random = None,
+        get_candidate_columns=all_columns,
+        min_samples: int = 2,
+    ):
         self.rand = rand  # for replicability
         self.get_candidate_columns = get_candidate_columns  # needed for random forests
         self.min_samples = min_samples
 
-    def gini(self, y: np.ndarray):
-        """Computes gini impurity"""
-        
+    def _gini(self, y: np.ndarray):
+        """Computes _gini impurity"""
+
         if len(y) == 0:
             return 0.0
-        
+
         counts = Counter(y)
         probs = [count / len(y) for count in counts.values()]
-        
-        return 1 - sum(p ** 2 for p in probs)
-    
-    def gini_for_split(self, X: np.ndarray, y: np.ndarray, feature, split_point: float):
-        """Returns gini impurity for a suggested split"""
-        
+
+        return 1 - sum(p**2 for p in probs)
+
+    def __gini_for_split(
+        self, X: np.ndarray, y: np.ndarray, feature, split_point: float
+    ):
+        """Returns _gini impurity for a suggested split"""
+
         indices_l = X[:, feature] <= split_point
         indices_r = X[:, feature] > split_point
-        
+
         # Get labels from left and right split
         y_l = y[indices_l]
         y_r = y[indices_r]
-        
-        # Get gini values
-        gini_l = self.gini(y_l)
-        gini_r = self.gini(y_r)
-        
+
+        # Get _gini values
+        _gini_l = self._gini(y_l)
+        _gini_r = self._gini(y_r)
+
         # Get weights
         weight_l = len(y_l) / len(y)
         weight_r = len(y_r) / len(y)
-        
+
         # Return total cost
-        return (weight_l * gini_l) + (weight_r * gini_r), indices_l, indices_r
-        
-    
-    def get_split_points(self, feature: np.ndarray):
+        return (weight_l * _gini_l) + (weight_r * _gini_r), indices_l, indices_r
+
+    def _get_split_points(self, feature: np.ndarray):
         """Returns array of values in between each pair of unique sorted feature values."""
         unique_values = np.unique(feature)
-        
+
         if len(unique_values) < 2:
             return np.array([])  # No valid split points if only one unique value
-        
-        return (unique_values[:-1] + unique_values[1:]) / 2
 
+        # limit = len(unique_values) // 10
+        return (
+            unique_values[:-1] + unique_values[1:]
+        ) / 2  # [limit:len(unique_values)-limit]
 
-    def majority_class(self, y):
+    def _majority_class(self, y):
         values, counts = np.unique(y, return_counts=True)
         return values[np.argmax(counts)]
 
-
     def build(self, X: np.ndarray, y: np.ndarray):
-        
+
         if len(X) < self.min_samples:
-            prediction = self.majority_class(y)
-            return TreeModel(best_feature=None, best_split=None, left_node=None, right_node=None, prediction=prediction)
-               
-        
+            prediction = self._majority_class(y)
+            return TreeModel(
+                best_feature=None,
+                best_split=None,
+                left_node=None,
+                right_node=None,
+                prediction=prediction,
+            )
+
         features = self.get_candidate_columns(X, self.rand)  # A list of feature indices
-        
+
         # Initialize
         best_cost = np.inf
         best_feature = None
@@ -89,21 +101,29 @@ class Tree:
 
         # Find best split
         for feature in features:
-            for split_value in self.get_split_points(X[:, feature]):
-                cost, indices_l, indices_r = self.gini_for_split(X, y, feature, split_value)
+            for split_value in self._get_split_points(X[:, feature]):
+                cost, indices_l, indices_r = self.__gini_for_split(
+                    X, y, feature, split_value
+                )
                 if cost < best_cost:
                     best_cost = cost
                     best_feature = feature
                     best_split = split_value
                     best_left = indices_l
                     best_right = indices_r
-                
+
                 if cost == 0:
                     break
-                    
+
         if best_feature is None:
-            return TreeModel(best_feature=None, best_split=None, left_node=None, right_node=None, prediction=self.majority_class(y))
-                    
+            return TreeModel(
+                best_feature=None,
+                best_split=None,
+                left_node=None,
+                right_node=None,
+                prediction=self._majority_class(y),
+            )
+
         # Get the right data splits
         X_left, X_right = X[best_left, :], X[best_right, :]
         y_left, y_right = y[best_left], y[best_right]
@@ -111,14 +131,16 @@ class Tree:
         # Build left and right subtrees
         node_left = self.build(X_left, y_left)
         node_right = self.build(X_right, y_right)
-                    
-        prediction = self.majority_class(y)
-        
-        return TreeModel(best_feature=best_feature,
-                         best_split=best_split,
-                         left_node=node_left,
-                         right_node=node_right,
-                         prediction=prediction)  # return an object that can do prediction
+
+        prediction = self._majority_class(y)
+
+        return TreeModel(
+            best_feature=best_feature,
+            best_split=best_split,
+            left_node=node_left,
+            right_node=node_right,
+            prediction=prediction,
+        )  # return an object that can do prediction
 
 
 class TreeModel:
@@ -129,17 +151,17 @@ class TreeModel:
         self.left_node = left_node
         self.right_node = right_node
         self.prediction = prediction
-        
+
     def predict(self, X):
         """Recursively predicts labels for given X"""
         # Detect leaf
         if self.best_feature is None:
             return np.full(len(X), self.prediction)
-    
-        # Otherwise split X 
+
+        # Otherwise split X
         mask_left = X[:, self.best_feature] <= self.best_split
         mask_right = ~mask_left  # Avoid redundant comparison
-        
+
         # Recursively get predictions
         preds_left = self.left_node.predict(X[mask_left])
         preds_right = self.right_node.predict(X[mask_right])
@@ -157,27 +179,69 @@ class RandomForest:
     def __init__(self, rand=None, n=50):
         self.n = n
         self.rand = rand
-        self.rftree = Tree(...)  # initialize the tree properly
+        self.rftree = Tree(
+            rand, get_candidate_columns=random_sqrt_columns, min_samples=2
+        )  # initialize the tree properly (initialize 1, use to build all trees)
+        self.trees = []
 
     def build(self, X, y):
-        # ...
-        return RFModel(...)  # return an object that can do prediction
+
+        # Get bootstrap samples
+        for _ in range(self.n):
+            sample_indices = self.rand.choices(
+                range(len(X)), k=X.shape[0]
+            )  # Uses replacement by default
+            X_sample = X[sample_indices, :]
+            y_sample = y[sample_indices]
+
+            tree = self.rftree.build(X_sample, y_sample)
+
+            self.trees.append(tree)
+
+        return RFModel(self.trees)  # return an object that can do prediction
 
 
 class RFModel:
 
-    def __init__(self):
-        pass
-        # ...
+    def __init__(self, trees: list):
+        self.trees = trees
+
+    def _majority_class(self, y):
+        values, counts = np.unique(y, return_counts=True)
+        return values[np.argmax(counts)]
 
     def predict(self, X):
-        # ...
-        return None
+        # Use majority vote over all trees in forest
+        predictions = np.array([tree.predict(X) for tree in self.trees])
+        final_preds = []
+
+        # prediction for each label
+        for c in range(predictions.shape[1]):
+            class_preds = predictions[:, c]
+            majority = self._majority_class(class_preds)
+            final_preds.append(majority)
+
+        return final_preds
+
+    def _get_tree_importances(self, tree, imps):
+        """Traverse the tree and get feature importances"""
+
+        if tree.best_feature is None:
+            return
+
+        imps[tree.best_feature] += 1
+
+        # Go left and right
+        self._get_tree_importances(tree.left_node, imps)
+        self._get_tree_importances(tree.right_node, imps)
 
     def importance(self):
-        imps = np.zeros(self.X.shape[1])
-        # ...
-        return imps
+        # Use gini reduction
+        imps = np.zeros(self.trees[0].best_feature + 1)
+        for tree in self.trees:
+            self._get_tree_importances(tree, imps)
+
+        return imps / len(self.trees)
 
 
 def read_tab(fn, adict):
@@ -198,24 +262,71 @@ def tki():
     return (Xt, yt), (Xv, yv), legend
 
 
+def compute_metrics(truths, preds, n):
+    # Compute train metrics
+    misclf_rate = np.mean(truths != preds)
+    misclf_sd = np.sqrt((misclf_rate * (1 - misclf_rate)) / n)
+
+    return misclf_rate, misclf_sd
+
+
 def hw_tree_full(train, test):
-    tree = Tree(rand=random.Random(1),
-                        get_candidate_columns=all_columns,
-                        min_samples=2)
-    
+    """Builds a random forest on train data and reports accuracy
+    and standard error when using train and test data as tests.
+    """
+    tree = Tree(rand=random.Random(1), get_candidate_columns=all_columns, min_samples=2)
+
     clf = tree.build(train[0], train[1])
-    
-    preds = clf.predict(test[0])
-    
-    print(accuracy_score(test[1], preds))
-    
-    return preds
-    
+
+    # Get predictions
+    preds_train = clf.predict(train[0])
+    preds_test = clf.predict(test[0])
+
+    misclf_rate_train, misclf_sd_train = compute_metrics(
+        train[1], preds_train, len(train[1])
+    )
+    misclf_rate_test, misclf_sd_test = compute_metrics(
+        test[1], preds_test, len(test[1])
+    )
+
+    return (misclf_rate_train, misclf_sd_train), (misclf_rate_test, misclf_sd_test)
+
+
+def hw_randomforests(train, test):
+    """Builds a random forest on train data and reports accuracy
+    and standard error when using train and test data as tests.
+    """
+    rf = RandomForest(rand=random.Random(0), n=100)
+
+    rf = rf.build(train[0], train[1])
+
+    # Get predictions
+    preds_train = rf.predict(train[0])
+    preds_test = rf.predict(test[0])
+
+    misclf_rate_train, misclf_sd_train = compute_metrics(
+        train[1], preds_train, len(train[1])
+    )
+    misclf_rate_test, misclf_sd_test = compute_metrics(
+        test[1], preds_test, len(test[1])
+    )
+
+    return (misclf_rate_train, misclf_sd_train), (misclf_rate_test, misclf_sd_test)
+
+
 if __name__ == "__main__":
+
+    learn, test, header = tki()
     
-    learn, test, legend = tki()
-    
-    hw_randomforests = None
+    start = time.time()
 
     print("full", hw_tree_full(learn, test))
+    
+    tree_end = time.time()
+    
     print("random forests", hw_randomforests(learn, test))
+
+    end = time.time()
+    
+    print(f"Tree took {(tree_end - start):.2f} seconds.")
+    print(f"RF took {(end - tree_end):.2f} seconds.")

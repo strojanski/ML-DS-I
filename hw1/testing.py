@@ -10,41 +10,41 @@ class MyTests(unittest.TestCase):
         """Initialize a Tree instance before each test."""
         self.tree = Tree()
     
-    def test_gini(self):
-        """Test Gini impurity calculation."""
-        self.assertAlmostEqual(self.tree.gini(np.array(["A", "A", "B", "B"])), 0.5)
-        self.assertAlmostEqual(self.tree.gini(np.array(["A", "A", "A", "A"])), 0.0)
-        self.assertAlmostEqual(self.tree.gini(np.array(["A", "B", "C", "D"])), 0.75)
-        self.assertAlmostEqual(self.tree.gini(np.array([])), 0.0)
+    def test__gini(self):
+        """Test _gini impurity calculation."""
+        self.assertAlmostEqual(self.tree._gini(np.array(["A", "A", "B", "B"])), 0.5)
+        self.assertAlmostEqual(self.tree._gini(np.array(["A", "A", "A", "A"])), 0.0)
+        self.assertAlmostEqual(self.tree._gini(np.array(["A", "B", "C", "D"])), 0.75)
+        self.assertAlmostEqual(self.tree._gini(np.array([])), 0.0)
 
-    def test_get_split_points(self):
+    def test__get_split_points(self):
         """Test that split points are generated correctly."""
         feature = np.array([1, 2, 3, 5, 7])
         expected = np.array([1.5, 2.5, 4.0, 6.0])  # Midpoints
-        np.testing.assert_array_almost_equal(self.tree.get_split_points(feature), expected)
+        np.testing.assert_array_almost_equal(self.tree._get_split_points(feature), expected)
 
         # Single unique value should return an empty array
         feature = np.array([5, 5, 5])
-        self.assertEqual(len(self.tree.get_split_points(feature)), 0)
+        self.assertEqual(len(self.tree._get_split_points(feature)), 0)
 
-    def test_gini_for_split(self):
-        """Test Gini calculation for a split."""
+    def test___gini_for_split(self):
+        """Test _gini calculation for a split."""
         X = np.array([[1], [2], [3], [4], [5]])
         y = np.array(["A", "A", "B", "B", "B"])
         
-        cost, left_indices, right_indices = self.tree.gini_for_split(X, y, feature=0, split_point=2.5)
+        cost, left_indices, right_indices = self.tree.__gini_for_split(X, y, feature=0, split_point=2.5)
 
-        self.assertLess(cost, 1.0)  # Gini should always be between 0 and 1
+        self.assertLess(cost, 1.0)  # _gini should always be between 0 and 1
         self.assertTrue(np.all(left_indices == np.array([True, True, False, False, False])))
         self.assertTrue(np.all(right_indices == np.array([False, False, True, True, True])))
 
-    def test_majority_class(self):
+    def test__majority_class(self):
         """Test that the majority class is correctly determined."""
         y = np.array(["A", "A", "B", "B", "B"])
-        self.assertEqual(self.tree.majority_class(y), "B")
+        self.assertEqual(self.tree._majority_class(y), "B")
         
         y = np.array(["A", "A", "B", "B"])
-        self.assertIn(self.tree.majority_class(y), ["A", "B"])  # Both A and B are tied
+        self.assertIn(self.tree._majority_class(y), ["A", "B"])  # Both A and B are tied
 
     def test_tree_build_and_predict(self):
         """Test tree building and prediction."""
