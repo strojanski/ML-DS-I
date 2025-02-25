@@ -186,10 +186,12 @@ class RandomForest:
 
     def build(self, X, y):
 
+        n_samples = X.shape[0]
+
         # Get bootstrap samples
         for _ in range(self.n):
             sample_indices = self.rand.choices(
-                range(len(X)), k=X.shape[0]
+                range(n_samples), k=n_samples
             )  # Uses replacement by default
             X_sample = X[sample_indices, :]
             y_sample = y[sample_indices]
@@ -205,6 +207,7 @@ class RFModel:
 
     def __init__(self, trees: list):
         self.trees = trees
+        self.cached_preds = None
 
     def _majority_class(self, y):
         values, counts = np.unique(y, return_counts=True)
@@ -213,15 +216,13 @@ class RFModel:
     def predict(self, X):
         # Use majority vote over all trees in forest
         predictions = np.array([tree.predict(X) for tree in self.trees])
-        final_preds = []
+        self.cached_preds = predictions
 
-        # prediction for each label
-        for c in range(predictions.shape[1]):
-            class_preds = predictions[:, c]
-            majority = self._majority_class(class_preds)
-            final_preds.append(majority)
+        majority_votes = np.apply_along_axis(
+            self._majority_class, axis=0, arr=predictions
+        )
 
-        return final_preds
+        return majority_votes
 
     def _get_tree_importances(self, tree, imps):
         """Traverse the tree and get feature importances"""
@@ -237,11 +238,46 @@ class RFModel:
 
     def importance(self):
         # Use gini reduction
-        imps = np.zeros(self.trees[0].best_feature + 1)
+        max_feature = max([tree.best_feature for tree in self.trees])
+        imps = np.zeros(max_feature + 1)
         for tree in self.trees:
             self._get_tree_importances(tree, imps)
 
         return imps / len(self.trees)
+
+    def _get_accuracy(self, X, y):
+        """Calculate accuracy for the predictions"""
+        preds = self.cached_preds
+        return np.mean(preds == y)
+
+    def importance2(self, X=[], y=[]):
+        """
+        Compute permutation-based variable importance for all features.
+        Returns a list of importance scores for each feature.
+        """
+
+        if len(X) == 0:
+            return self.importance()
+
+        # Compute the baseline accuracy
+        baseline_accuracy = self._get_accuracy(X, y)
+
+        feature_importances = np.zeros(X.shape[1])
+
+        # For each feature, permute and calculate the accuracy drop
+        for feature_idx in range(X.shape[1]):
+            X_permuted = X.copy()
+            np.random.shuffle(X_permuted[:, feature_idx])  # Permute the feature column
+
+            permuted_accuracy = self._get_accuracy(X_permuted, y)
+
+            feature_importances[feature_idx] = baseline_accuracy - permuted_accuracy
+
+        return (
+            feature_importances / np.sum(feature_importances)
+            if np.sum(feature_importances) > 0
+            else feature_importances
+        )
 
 
 def read_tab(fn, adict):
@@ -311,22 +347,29 @@ def hw_randomforests(train, test):
         test[1], preds_test, len(test[1])
     )
 
+    importances1 = rf.importance()
+
+    importances2 = rf.importance2(test[0], test[1])
+
+    print(importances1)
+    print(importances2)
+
     return (misclf_rate_train, misclf_sd_train), (misclf_rate_test, misclf_sd_test)
 
 
 if __name__ == "__main__":
 
     learn, test, header = tki()
-    
+
     start = time.time()
 
-    print("full", hw_tree_full(learn, test))
-    
+    # print("full", hw_tree_full(learn, test))
+
     tree_end = time.time()
-    
+
     print("random forests", hw_randomforests(learn, test))
 
     end = time.time()
-    
+
     print(f"Tree took {(tree_end - start):.2f} seconds.")
     print(f"RF took {(end - tree_end):.2f} seconds.")
