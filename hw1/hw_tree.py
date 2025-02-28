@@ -33,6 +33,7 @@ class Tree:
         if len(y) == 0:
             return 0.0
 
+        # TODO: Cache the value counts - count one side and avoid recounting the values!
         counts = Counter(y)
         probs = [count / len(y) for count in counts.values()]
 
@@ -90,6 +91,7 @@ class Tree:
                 cost_reduction=0
             )
 
+        # TODO: We should take random features 1 per split not 1 per tree! (Reason: if you pick a bad combination of features the tree will be bad - if we do it every split the probablity for that is lower)
         features = self.get_candidate_columns(X, self.rand)  # A list of feature indices
 
         parent_gini = self._gini(y)
@@ -102,6 +104,8 @@ class Tree:
         best_right = None
 
         # Find best split
+        # TODO: Optimize finding the best split value
+        #     - Don't recount the values when looking for split points
         for feature in features:
             for split_value in self._get_split_points(X[:, feature]):
                 cost, indices_l, indices_r = self.__gini_for_split(
@@ -259,6 +263,7 @@ class RandomForest:
             sample_indices = self.rand.choices(
                 range(n_samples), k=n_samples
             )  # Uses replacement by default
+            # Bootstrap: If we have enough samples, we can approach the DGP really well
             
             oob_indices = list(set(range(n_samples)) - set(sample_indices))
             
@@ -403,6 +408,10 @@ def hw_tree_full(train, test):
     """Builds a random forest on train data and reports accuracy
     and standard error when using train and test data as tests.
     """
+
+    # Reporting the uncertainty
+    # Bootstrap the test data and report the mean and average errors
+    
     tree = Tree(rand=random.Random(1), get_candidate_columns=all_columns, min_samples=2)
 
     clf = tree.build(train[0], train[1])
