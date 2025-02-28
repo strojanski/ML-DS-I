@@ -27,12 +27,12 @@ class MyTests(unittest.TestCase):
         feature = np.array([5, 5, 5])
         self.assertEqual(len(self.tree._get_split_points(feature)), 0)
 
-    def test___gini_for_split(self):
+    def test_gini_for_split(self):
         """Test _gini calculation for a split."""
         X = np.array([[1], [2], [3], [4], [5]])
         y = np.array(["A", "A", "B", "B", "B"])
         
-        cost, left_indices, right_indices = self.tree.__gini_for_split(X, y, feature=0, split_point=2.5)
+        cost, left_indices, right_indices = self.tree._gini_for_split(X, y, feature=0, split_point=2.5)
 
         self.assertLess(cost, 1.0)  # _gini should always be between 0 and 1
         self.assertTrue(np.all(left_indices == np.array([True, True, False, False, False])))

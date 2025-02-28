@@ -38,7 +38,7 @@ class Tree:
 
         return 1 - sum(p**2 for p in probs)
 
-    def __gini_for_split(
+    def _gini_for_split(
         self, X: np.ndarray, y: np.ndarray, feature, split_point: float
     ):
         """Returns _gini impurity for a suggested split"""
@@ -104,7 +104,7 @@ class Tree:
         # Find best split
         for feature in features:
             for split_value in self._get_split_points(X[:, feature]):
-                cost, indices_l, indices_r = self.__gini_for_split(
+                cost, indices_l, indices_r = self._gini_for_split(
                     X, y, feature, split_value
                 )
                 if cost < best_cost:
@@ -310,7 +310,8 @@ class RFModel:
 
     def importance_default(self):
         """Regular feature importances - average cost reduction by feature over all trees"""
-        max_feature = max([tree.best_feature for tree in self.trees])
+        # max_feature = max([tree.best_feature for tree in self.trees])
+        max_feature = self.X.shape[1]
         total_reduction = [0]
         
         imps = np.zeros(max_feature + 1)
@@ -319,10 +320,6 @@ class RFModel:
 
         return imps / total_reduction[0] if total_reduction[0] > 0 else imps
 
-    def _get_accuracy(self, X, y):
-        """Calculate accuracy for the predictions"""
-        preds = self.cached_preds
-        return np.mean(preds == y)
 
     def importance(self):
         """
@@ -449,20 +446,12 @@ def hw_randomforests(train, test):
     importances2 = rf.importance()
     end = time.time()
     
-    print("importances took ", end-start)
-    
-    print(importances1)
-    print(importances2)
-    
-    plt.bar(range(train[0].shape[1]), importances1)
-    plt.bar(range(train[0].shape[1]), importances2)
+    print("importances took ", end-start)    
     
     np.save("imp1.npy", importances1)
     np.save("imp2.npy", importances2)
 
     plt.show()
-    
-    
 
     return (misclf_rate_train, misclf_sd_train), (misclf_rate_test, misclf_sd_test)
 
