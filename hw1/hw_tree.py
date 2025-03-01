@@ -69,10 +69,9 @@ class Tree:
         if len(unique_values) < 2:
             return np.array([])  # No valid split points if only one unique value
 
-        # limit = len(unique_values) // 10
         return (
             unique_values[:-1] + unique_values[1:]
-        ) / 2  # [limit:len(unique_values)-limit]
+        ) / 2  
 
     def _majority_class(self, y):
         values, counts = np.unique(y, return_counts=True)
@@ -87,15 +86,16 @@ class Tree:
                 best_split=None,
                 left_node=None,
                 right_node=None,
-                prediction=prediction,
-                cost_reduction=0
+                prediction=prediction
             )
 
         # TODO: We should take random features 1 per split not 1 per tree! (Reason: if you pick a bad combination of features the tree will be bad - if we do it every split the probablity for that is lower)
         features = self.get_candidate_columns(X, self.rand)  # A list of feature indices
 
-        parent_gini = self._gini(y)
-
+        # Find best split
+        # TODO: Optimize finding the best split value
+        #     - Don't recount the values when looking for split points
+        
         # Initialize
         best_cost = np.inf
         best_feature = None
@@ -103,9 +103,6 @@ class Tree:
         best_left = None
         best_right = None
 
-        # Find best split
-        # TODO: Optimize finding the best split value
-        #     - Don't recount the values when looking for split points
         for feature in features:
             for split_value in self._get_split_points(X[:, feature]):
                 cost, indices_l, indices_r = self._gini_for_split(
@@ -128,11 +125,9 @@ class Tree:
                 best_split=None,
                 left_node=None,
                 right_node=None,
-                prediction=self._majority_class(y),
-                cost_reduction=0
+                prediction=self._majority_class(y)
             )
             
-        cost_reduction = parent_gini - cost
 
         # Get the right data splits
         X_left, X_right = X[best_left, :], X[best_right, :]
@@ -149,20 +144,18 @@ class Tree:
             best_split=best_split,
             left_node=node_left,
             right_node=node_right,
-            prediction=prediction,
-            cost_reduction=cost_reduction
+            prediction=prediction
         )  # return an object that can do prediction
 
 
 class TreeModel:
 
-    def __init__(self, best_feature, best_split, left_node, right_node, prediction, cost_reduction):
+    def __init__(self, best_feature, best_split, left_node, right_node, prediction):
         self.best_feature = best_feature
         self.best_split = best_split
         self.left_node = left_node
         self.right_node = right_node
         self.prediction = prediction
-        self.cost_reduction = cost_reduction
 
     def predict(self, X):
         """Recursively predicts labels for given X"""
@@ -185,61 +178,6 @@ class TreeModel:
 
         return predictions
     
-    def predict_iter(self, X):
-        """Non-recursive prediction for decision tree with optimized performance."""
-        # Initialize predictions with the default prediction (leaf node prediction)
-        predictions = np.full(len(X), self.prediction, dtype=int)
-
-        # Initialize stack to simulate recursion (each element is a tuple of the node and its indices)
-        stack = [(self, np.arange(len(X)))]  # Start with the root node and all sample indices
-
-        while stack:
-            node, indices = stack.pop()  # Get the current node and corresponding sample indices
-
-            if node.best_feature is None:
-                # Leaf node: assign its prediction to all samples in the current indices
-                predictions[indices] = node.prediction
-            else:
-                # Split the data based on the node's feature and split point
-                feature_values = X[indices, node.best_feature]
-                left_indices = indices[feature_values <= node.best_split]
-                right_indices = indices[feature_values > node.best_split]
-
-                # If the node has a left child, push it to the stack with the left indices
-                if node.left_node is not None and len(left_indices) > 0:
-                    stack.append((node.left_node, left_indices))
-                
-                # If the node has a right child, push it to the stack with the right indices
-                if node.right_node is not None and len(right_indices) > 0:
-                    stack.append((node.right_node, right_indices))
-
-        return predictions
-
-    
-    def importances(self):
-        """
-        Computes feature importance based on the improvement in Gini impurity.
-        """
-        if self.best_feature is None:
-            return {}
-
-        # Initialize importance dictionary
-        importance = Counter()
-
-        def traverse(node, importance):
-            if node.best_feature is not None:
-                importance[node.best_feature] += node.cost_reduction
-                traverse(node.left_node, importance)
-                traverse(node.right_node, importance)
-
-        traverse(self, importance)
-        total_cost_reduction = sum(importance.values())
-        for key in importance:
-            importance[key] /= total_cost_reduction  # Normalize
-
-        return dict(importance)
-
-
 
 class RandomForest:
 
@@ -286,44 +224,16 @@ class RFModel:
         self.X = X
         self.y = y
 
-    # def _majority_class(self, y):
-    #     values, counts = np.unique(y, return_counts=True)
-    #     return values[np.argmax(counts)]
 
     def predict(self, X):
         # Use majority vote over all trees in forest
-        predictions = np.array([tree.predict_iter(X) for tree in self.trees])
+        predictions = np.array([tree.predict(X) for tree in self.trees])
         
         majority_votes = np.apply_along_axis(
             lambda x: np.bincount(x).argmax(), axis=0, arr=predictions
         )
 
         return majority_votes
-
-    def _get_tree_importances(self, tree, imps, total_reduction):
-        """Traverse the tree and get feature importances"""
-
-        if tree.best_feature is None:
-            return
-
-        imps[tree.best_feature] += tree.cost_reduction
-        total_reduction[0] += tree.cost_reduction
-
-        # Go left and right
-        self._get_tree_importances(tree.left_node, imps, total_reduction)
-        self._get_tree_importances(tree.right_node, imps, total_reduction)
-
-    def importance_default(self):
-        """Regular feature importances - average cost reduction by feature over all trees"""
-        # max_feature = max([tree.best_feature for tree in self.trees])
-        max_feature = self.X.shape[1]
-        total_reduction = [0]
-        
-        imps = np.zeros(max_feature + 1)
-        for tree in self.trees:
-            self._get_tree_importances(tree, imps, total_reduction)
-
-        return imps / total_reduction[0] if total_reduction[0] > 0 else imps
 
 
     def importance(self):
@@ -424,7 +334,6 @@ def hw_tree_full(train, test):
         test[1], preds_test, len(test[1])
     )
 
-    print(clf.importances())
 
     return (misclf_rate_train, misclf_sd_train), (misclf_rate_test, misclf_sd_test)
 
@@ -449,15 +358,12 @@ def hw_randomforests(train, test):
         test[1], preds_test, len(test[1])
     )
 
-    importances1 = rf.importance_default()
-
     start = time.time()
     importances2 = rf.importance()
     end = time.time()
     
     print("importances took ", end-start)    
     
-    np.save("imp1.npy", importances1)
     np.save("imp2.npy", importances2)
 
     plt.show()
