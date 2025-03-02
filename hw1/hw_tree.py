@@ -89,11 +89,11 @@ class Tree:
                 prediction=prediction
             )
 
-        # TODO: We should take random features 1 per split not 1 per tree! (Reason: if you pick a bad combination of features the tree will be bad - if we do it every split the probablity for that is lower)
+        # We should take random features 1 per split not 1 per tree! (Reason: if you pick a bad combination of features the tree will be bad - if we do it every split the probablity for that is lower)
         features = self.get_candidate_columns(X, self.rand)  # A list of feature indices
 
         # Find best split
-        # TODO: Optimize finding the best split value
+        # Optimize finding the best split value
         #     - Don't recount the values when looking for split points
         
         # Initialize
@@ -213,16 +213,17 @@ class RandomForest:
             self.trees.append(tree)
             self.oob_samples.append(oob_indices)
 
-        return RFModel(self.trees, self.oob_samples, X, y)  # return an object that can do prediction
+        return RFModel(self.trees, self.oob_samples, X, y, self.rand)  # return an object that can do prediction
 
 
 class RFModel:
 
-    def __init__(self, trees: list, oob_samples, X, y):
+    def __init__(self, trees: list, oob_samples, X, y, rand):
         self.trees = trees
         self.oob_samples = oob_samples # list of OOB rows for corresponding tree
         self.X = X
         self.y = y
+        self.rand = rand
 
 
     def predict(self, X):
@@ -267,7 +268,7 @@ class RFModel:
 
                 permuted_accuracy = np.mean(tree.predict(X_oob) == y_oob)
 
-                feature_importances[feature_idx] += np.max(baseline_accuracy - permuted_accuracy, 0)
+                feature_importances[feature_idx] += baseline_accuracy - permuted_accuracy
             
                 # Unpermute
                 X_oob[:, feature_idx] = self.X[oob_indices, feature_idx]
@@ -327,12 +328,28 @@ def hw_tree_full(train, test):
     preds_train = clf.predict(train[0])
     preds_test = clf.predict(test[0])
     
-    misclf_rate_train, misclf_sd_train = compute_metrics(
-        train[1], preds_train, len(train[1])
-    )
-    misclf_rate_test, misclf_sd_test = compute_metrics(
-        test[1], preds_test, len(test[1])
-    )
+    # Bootstrap errors:
+    trains, tests = [], []
+    for i in range(100):
+        ix_boot_preds_test = np.random.choice(range(len(preds_test)), size=len(preds_test), replace=True)
+        ix_boot_preds_train = np.random.choice(range(len(preds_test)), size=len(preds_train), replace=True)
+        
+        misclf_rate_train, misclf_sd_train = compute_metrics(
+            train[1][ix_boot_preds_train], preds_train[ix_boot_preds_train], len(train[1])
+        )
+
+        misclf_rate_test, misclf_sd_test = compute_metrics(
+            test[1][ix_boot_preds_test], preds_test[ix_boot_preds_test], len(test[1])
+        )
+        
+        trains.append(misclf_rate_train)
+        tests.append(misclf_rate_test)
+
+    misclf_rate_train = np.mean(trains)
+    misclf_sd_train = np.std(trains)
+    
+    misclf_rate_test = np.mean(tests)
+    misclf_sd_test = np.std(tests)
 
 
     return (misclf_rate_train, misclf_sd_train), (misclf_rate_test, misclf_sd_test)
@@ -350,22 +367,38 @@ def hw_randomforests(train, test):
     preds_train = rf.predict(train[0])
     preds_test = rf.predict(test[0])
     
+    # Bootstrap errors:
+    trains, tests = [], []
+    for i in range(100):
+        ix_boot_preds_test = np.random.choice(range(len(preds_test)), size=len(preds_test), replace=True)
+        ix_boot_preds_train = np.random.choice(range(len(preds_test)), size=len(preds_train), replace=True)
+        
+        misclf_rate_train, misclf_sd_train = compute_metrics(
+            train[1][ix_boot_preds_train], preds_train[ix_boot_preds_train], len(train[1])
+        )
 
-    misclf_rate_train, misclf_sd_train = compute_metrics(
-        train[1], preds_train, len(train[1])
-    )
-    misclf_rate_test, misclf_sd_test = compute_metrics(
-        test[1], preds_test, len(test[1])
-    )
+        misclf_rate_test, misclf_sd_test = compute_metrics(
+            test[1][ix_boot_preds_test], preds_test[ix_boot_preds_test], len(test[1])
+        )
+        
+        trains.append(misclf_rate_train)
+        tests.append(misclf_rate_test)
+
+    misclf_rate_train = np.mean(trains)
+    misclf_sd_train = np.std(trains)
+    
+    misclf_rate_test = np.mean(tests)
+    misclf_sd_test = np.std(tests)
 
     start = time.time()
-    importances2 = rf.importance()
+    importances = rf.importance()
     end = time.time()
+    # print(importances)
+    
+    np.save("imps.npy", importances)
     
     print("importances took ", end-start)    
     
-    np.save("imp2.npy", importances2)
-
     plt.show()
 
     return (misclf_rate_train, misclf_sd_train), (misclf_rate_test, misclf_sd_test)
