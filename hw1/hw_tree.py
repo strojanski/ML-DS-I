@@ -364,6 +364,23 @@ class RFModel:
             
             print("Tree took:", end-start, "seconds")
             
+        top5 = [0,0,0,0,0,0]
+        top5_names = ["","","","","","",""]
+        for k, v in feature_importances:
+            if v >= np.max(top5):
+                min_ix = np.argmin(top5)
+                top5[min_ix] = v
+                top5_names[min_ix] = k
+                
+        with open("top5_feats.pkl", "wb") as f:
+            pickle.dump(top5, f)
+            
+        top5_names = np.array(top5_names)
+        np.savetxt("top5_names.txt", top5_names)
+                
+        print(np.argsort())    
+        
+        # TODO: get imps from dictionary as tested doesnt have all the combinations
         with open("feature_imps3.pkl", "wb") as f:
             pickle.dump(feature_importances, f)    
         
