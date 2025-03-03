@@ -4,6 +4,8 @@ import random
 from collections import Counter
 import time
 import matplotlib.pyplot as plt
+import itertools 
+import tqdm
 
 def all_columns(X: np.ndarray, rand: int):
     return range(X.shape[1])
@@ -144,7 +146,7 @@ class Tree:
             best_split=best_split,
             left_node=node_left,
             right_node=node_right,
-            prediction=prediction
+            prediction=None
         )  # return an object that can do prediction
 
 
@@ -158,27 +160,21 @@ class TreeModel:
         self.prediction = prediction
 
     def predict(self, X):
-        """Recursively predicts labels for given X"""
-        # Detect leaf
-        if self.best_feature is None:
-            return np.full(len(X), self.prediction)
+        predictions = [self.predict_sample(x) for x in X]
+        return np.array(predictions)
 
-        # Otherwise split X
-        mask_left = X[:, self.best_feature] <= self.best_split
-        mask_right = ~mask_left 
-
-        # Recursively get predictions
-        preds_left = self.left_node.predict(X[mask_left])
-        preds_right = self.right_node.predict(X[mask_right])
-
-        # Combine preds
-        predictions = np.empty(len(X), dtype=int)
-        predictions[mask_left] = preds_left
-        predictions[mask_right] = preds_right
-
-        return predictions
+    def predict_sample(self, x):
+        # Detect leaf - just in case, should never happen
+        if self.prediction is not None:
+            return self.prediction
+        
+        # Traverse the tree
+        node = self
+        while node.left_node is not None and node.right_node is not None:
+            node = node.left_node if x[node.best_feature] <= node.best_split else node.right_node
+            
+        return node.prediction   
     
-
 class RandomForest:
 
     def __init__(self, rand=None, n=50):
@@ -243,8 +239,6 @@ class RFModel:
         Returns a list of importance scores for each feature.
         OOB -> USE TRAIN DATA
         """
-        if len(self.X) == 0:
-            return self.importance()
 
         feature_importances = np.zeros(self.X.shape[1])
         total_trees = len(self.trees)
@@ -283,6 +277,61 @@ class RFModel:
             if np.sum(feature_importances) > 0
             else feature_importances
         )
+        
+    def importance3(self):
+        """
+        Compute permutation-based variable importance using out-of-bag (OOB) samples for tuples of 3 variables.
+        Returns a list of importance scores for each feature.
+        """
+
+        feature_importances = {}
+        total_trees = len(self.trees)
+
+        start = time.time()
+        for tree, oob_indices in zip(self.trees, self.oob_samples):
+            # Identify OOB samples for this tree
+            if len(oob_indices) == 0:
+                continue  # Skip if no OOB samples
+
+            X_oob = self.X[oob_indices, :]
+            y_oob = self.y[oob_indices]
+
+            # Compute baseline accuracy using OOB samples
+            baseline_accuracy = np.mean(tree.predict(X_oob) == y_oob)
+
+            # Permute each feature and measure accuracy drop
+            n_feats = self.X.shape[1]
+            feature_indices = range(n_feats)
+            tested = []
+            
+            for comb in tqdm.tqdm(itertools.combinations(feature_indices, r=3)):
+                feats = [comb[0], comb[1], comb[2]]
+                feats = sorted(feats)
+
+                if f"{feats[0]} {feats[1]} {feats[2]}" in tested:
+                    continue
+                
+                tested.append([f"{feats[0]} {feats[1]} {feats[2]}"])
+
+                if f"{feats[0]} {feats[1]} {feats[2]}" not in feature_importances.keys():
+                    feature_importances[f"{feats[0]} {feats[1]} {feats[2]}"] = 0                
+                
+                # Permute in place
+                for f in feats:
+                    X_oob[:, f] = np.random.permutation(X_oob[:, f])
+
+                permuted_accuracy = np.mean(tree.predict(X_oob) == y_oob)
+
+                feature_importances[f"{feats[0]} {feats[1]} {feats[2]}"] += baseline_accuracy - permuted_accuracy
+            
+                # Unpermute
+                for f in feats:
+                    X_oob[:, f] = self.X[oob_indices, f]
+            end = time.time()
+            
+            print("Tree took:", end-start, "seconds")
+
+        return feature_importances
 
 
 
@@ -355,7 +404,25 @@ def hw_tree_full(train, test):
     return (misclf_rate_train, misclf_sd_train), (misclf_rate_test, misclf_sd_test)
 
 
-def hw_randomforests(train, test):
+def get_nonrandom_imps(train):
+    
+    tree = Tree(None, get_candidate_columns=all_columns, min_samples=len(train[0])-1)
+    root_feats = []
+    for i in range(100):
+        print(i)
+        
+        rand_samples = np.random.choice(range(len(train[0])), len(train[0]), replace=True)
+        
+        X = train[0][rand_samples, :]
+        y = train[1][rand_samples]
+        
+        tm = tree.build(X, y)
+
+        root_feats.append(tm.best_feature)
+        
+    return root_feats
+
+def hw_randomforests(train, test, plot=False):
     """Builds a random forest on train data and reports accuracy
     and standard error when using train and test data as tests.
     """
@@ -393,9 +460,19 @@ def hw_randomforests(train, test):
     start = time.time()
     importances = rf.importance()
     end = time.time()
-    # print(importances)
     
-    np.save("imps.npy", importances)
+    
+    if plot:
+        nonrandom_feats = get_nonrandom_imps(train)
+        
+        nonrandom_imps = np.zeros(importances.shape)
+        nonrandom_imps[nonrandom_feats] = importances[nonrandom_feats]
+        
+        plt.figure(figsize=(9,6))
+        plt.bar(range(len(importances)), importances, label="RF importances")
+        plt.bar(range(len(importances)), nonrandom_imps, label="Root importances")
+        plt.legend()
+        plt.show()
     
     print("importances took ", end-start)    
     
@@ -410,7 +487,7 @@ if __name__ == "__main__":
 
     start = time.time()
 
-    print("full", hw_tree_full(learn, test))
+    # print("full", hw_tree_full(learn, test))
 
     tree_end = time.time()
 
