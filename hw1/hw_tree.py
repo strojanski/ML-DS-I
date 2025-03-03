@@ -6,6 +6,7 @@ import time
 import matplotlib.pyplot as plt
 import itertools 
 import tqdm
+import pickle 
 
 def all_columns(X: np.ndarray, rand: int):
     return range(X.shape[1])
@@ -28,6 +29,10 @@ class Tree:
         self.rand = rand  # for replicability
         self.get_candidate_columns = get_candidate_columns  # needed for random forests
         self.min_samples = min_samples
+        self.used_features = set()
+        
+    def reset_used_feats(self):
+        self.used_features = set()
 
     def _gini(self, y: np.ndarray):
         """Computes _gini impurity"""
@@ -88,7 +93,8 @@ class Tree:
                 best_split=None,
                 left_node=None,
                 right_node=None,
-                prediction=prediction
+                prediction=prediction,
+                used_features=self.used_features
             )
 
         # We should take random features 1 per split not 1 per tree! (Reason: if you pick a bad combination of features the tree will be bad - if we do it every split the probablity for that is lower)
@@ -127,8 +133,11 @@ class Tree:
                 best_split=None,
                 left_node=None,
                 right_node=None,
-                prediction=self._majority_class(y)
+                prediction=self._majority_class(y),
+                used_features=self.used_features
             )
+            
+        self.used_features.add(best_feature)
             
 
         # Get the right data splits
@@ -146,18 +155,20 @@ class Tree:
             best_split=best_split,
             left_node=node_left,
             right_node=node_right,
-            prediction=None
+            prediction=None,
+            used_features=self.used_features
         )  # return an object that can do prediction
 
 
 class TreeModel:
 
-    def __init__(self, best_feature, best_split, left_node, right_node, prediction):
+    def __init__(self, best_feature, best_split, left_node, right_node, prediction, used_features):
         self.best_feature = best_feature
         self.best_split = best_split
         self.left_node = left_node
         self.right_node = right_node
         self.prediction = prediction
+        self.used_features = used_features
 
     def predict(self, X):
         predictions = [self.predict_sample(x) for x in X]
@@ -208,6 +219,8 @@ class RandomForest:
 
             self.trees.append(tree)
             self.oob_samples.append(oob_indices)
+            
+            self.rftree.reset_used_feats()
 
         return RFModel(self.trees, self.oob_samples, X, y, self.rand)  # return an object that can do prediction
 
@@ -256,7 +269,13 @@ class RFModel:
 
             # Permute each feature and measure accuracy drop
             n_feats = self.X.shape[1]
+            print("Features to check:", len(tree.used_features), "/", n_feats)
             for feature_idx in range(n_feats):
+                
+                if feature_idx not in tree.used_features:
+                    feature_importances[feature_idx] += 0
+                    continue
+                
                 # Permute in place
                 X_oob[:, feature_idx] = np.random.permutation(X_oob[:, feature_idx])
 
@@ -302,19 +321,33 @@ class RFModel:
             # Permute each feature and measure accuracy drop
             n_feats = self.X.shape[1]
             feature_indices = range(n_feats)
-            tested = []
+            tested = set()
             
-            for comb in tqdm.tqdm(itertools.combinations(feature_indices, r=3)):
-                feats = [comb[0], comb[1], comb[2]]
-                feats = sorted(feats)
-
-                if f"{feats[0]} {feats[1]} {feats[2]}" in tested:
-                    continue
+            other_feats = [f for f in feature_indices if f not in tree.used_features]
+            
+            # Add them for safekeeping
+            for comb in itertools.combinations(other_feats, r=3):
+                feats = tuple(sorted(comb))
                 
-                tested.append([f"{feats[0]} {feats[1]} {feats[2]}"])
+                if feats not in feature_importances.keys():
+                    feature_importances[feats] = 0
+                else:
+                    feature_importances[feats] += 0
+                
+            combs = list(itertools.combinations(tree.used_features, r=3))
+            
+            print(len(combs), len(tree.used_features))
+            
+            for comb in tqdm.tqdm(combs):
+                feats = tuple(sorted(comb))
 
-                if f"{feats[0]} {feats[1]} {feats[2]}" not in feature_importances.keys():
-                    feature_importances[f"{feats[0]} {feats[1]} {feats[2]}"] = 0                
+                if feats in tested:
+                    continue
+                else:
+                    tested.add(feats)
+
+                if feats not in feature_importances.keys():
+                    feature_importances[feats] = 0                
                 
                 # Permute in place
                 for f in feats:
@@ -322,7 +355,7 @@ class RFModel:
 
                 permuted_accuracy = np.mean(tree.predict(X_oob) == y_oob)
 
-                feature_importances[f"{feats[0]} {feats[1]} {feats[2]}"] += baseline_accuracy - permuted_accuracy
+                feature_importances[feats] += baseline_accuracy - permuted_accuracy
             
                 # Unpermute
                 for f in feats:
@@ -330,8 +363,16 @@ class RFModel:
             end = time.time()
             
             print("Tree took:", end-start, "seconds")
+            
+        with open("feature_imps3.pkl", "wb") as f:
+            pickle.dump(feature_importances, f)    
+        
+        tested = sorted(list(tested))
+        scores = []
+        for t in tested:
+            scores.append(feature_importances[t])
 
-        return feature_importances
+        return scores, tested
 
 
 
@@ -422,11 +463,12 @@ def get_nonrandom_imps(train):
         
     return root_feats
 
+
 def hw_randomforests(train, test, plot=False):
     """Builds a random forest on train data and reports accuracy
     and standard error when using train and test data as tests.
     """
-    rf = RandomForest(rand=random.Random(0), n=100)
+    rf = RandomForest(rand=random.Random(0), n=1000)
 
     rf = rf.build(train[0], train[1])
 
@@ -458,9 +500,12 @@ def hw_randomforests(train, test, plot=False):
     misclf_sd_test = np.std(tests)
 
     start = time.time()
-    importances = rf.importance()
+    importances = rf.importance3()
     end = time.time()
     
+    scores, names = importances
+    np.save("importances3.npy", np.array(scores))
+    np.savetxt("importances3_names.txt", names)
     
     if plot:
         nonrandom_feats = get_nonrandom_imps(train)
@@ -487,7 +532,7 @@ if __name__ == "__main__":
 
     start = time.time()
 
-    # print("full", hw_tree_full(learn, test))
+    print("full", hw_tree_full(learn, test))
 
     tree_end = time.time()
 
