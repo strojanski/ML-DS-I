@@ -4,9 +4,10 @@ import random
 from collections import Counter
 import time
 import matplotlib.pyplot as plt
-import itertools 
+import itertools
 import tqdm
-import pickle 
+import pickle
+
 
 def all_columns(X: np.ndarray, rand: int):
     return range(X.shape[1])
@@ -30,7 +31,7 @@ class Tree:
         self.get_candidate_columns = get_candidate_columns  # needed for random forests
         self.min_samples = min_samples
         self.used_features = set()
-        
+
     def reset_used_feats(self):
         self.used_features = set()
 
@@ -76,9 +77,7 @@ class Tree:
         if len(unique_values) < 2:
             return np.array([])  # No valid split points if only one unique value
 
-        return (
-            unique_values[:-1] + unique_values[1:]
-        ) / 2  
+        return (unique_values[:-1] + unique_values[1:]) / 2
 
     def _majority_class(self, y):
         values, counts = np.unique(y, return_counts=True)
@@ -94,7 +93,7 @@ class Tree:
                 left_node=None,
                 right_node=None,
                 prediction=prediction,
-                used_features=self.used_features
+                used_features=self.used_features,
             )
 
         # We should take random features 1 per split not 1 per tree! (Reason: if you pick a bad combination of features the tree will be bad - if we do it every split the probablity for that is lower)
@@ -103,7 +102,7 @@ class Tree:
         # Find best split
         # Optimize finding the best split value
         #     - Don't recount the values when looking for split points
-        
+
         # Initialize
         best_cost = np.inf
         best_feature = None
@@ -125,7 +124,6 @@ class Tree:
 
                 if cost == 0:
                     break
-                
 
         if best_feature is None:
             return TreeModel(
@@ -134,11 +132,10 @@ class Tree:
                 left_node=None,
                 right_node=None,
                 prediction=self._majority_class(y),
-                used_features=self.used_features
+                used_features=self.used_features,
             )
-            
+
         self.used_features.add(best_feature)
-            
 
         # Get the right data splits
         X_left, X_right = X[best_left, :], X[best_right, :]
@@ -156,13 +153,15 @@ class Tree:
             left_node=node_left,
             right_node=node_right,
             prediction=None,
-            used_features=self.used_features
+            used_features=self.used_features,
         )  # return an object that can do prediction
 
 
 class TreeModel:
 
-    def __init__(self, best_feature, best_split, left_node, right_node, prediction, used_features):
+    def __init__(
+        self, best_feature, best_split, left_node, right_node, prediction, used_features
+    ):
         self.best_feature = best_feature
         self.best_split = best_split
         self.left_node = left_node
@@ -178,14 +177,19 @@ class TreeModel:
         # Detect leaf - just in case, should never happen
         if self.prediction is not None:
             return self.prediction
-        
+
         # Traverse the tree
         node = self
         while node.left_node is not None and node.right_node is not None:
-            node = node.left_node if x[node.best_feature] <= node.best_split else node.right_node
-            
-        return node.prediction   
-    
+            node = (
+                node.left_node
+                if x[node.best_feature] <= node.best_split
+                else node.right_node
+            )
+
+        return node.prediction
+
+
 class RandomForest:
 
     def __init__(self, rand=None, n=50):
@@ -209,9 +213,9 @@ class RandomForest:
                 range(n_samples), k=n_samples
             )  # Uses replacement by default
             # Bootstrap: If we have enough samples, we can approach the DGP really well
-            
+
             oob_indices = list(set(range(n_samples)) - set(sample_indices))
-            
+
             X_sample = X[sample_indices, :]
             y_sample = y[sample_indices]
 
@@ -219,32 +223,32 @@ class RandomForest:
 
             self.trees.append(tree)
             self.oob_samples.append(oob_indices)
-            
+
             self.rftree.reset_used_feats()
 
-        return RFModel(self.trees, self.oob_samples, X, y, self.rand)  # return an object that can do prediction
+        return RFModel(
+            self.trees, self.oob_samples, X, y, self.rand
+        )  # return an object that can do prediction
 
 
 class RFModel:
 
     def __init__(self, trees: list, oob_samples, X, y, rand):
         self.trees = trees
-        self.oob_samples = oob_samples # list of OOB rows for corresponding tree
+        self.oob_samples = oob_samples  # list of OOB rows for corresponding tree
         self.X = X
         self.y = y
         self.rand = rand
 
-
     def predict(self, X):
         # Use majority vote over all trees in forest
         predictions = np.array([tree.predict(X) for tree in self.trees])
-        
+
         majority_votes = np.apply_along_axis(
             lambda x: np.bincount(x).argmax(), axis=0, arr=predictions
         )
 
         return majority_votes
-
 
     def importance(self):
         """
@@ -271,32 +275,33 @@ class RFModel:
             n_feats = self.X.shape[1]
             print("Features to check:", len(tree.used_features), "/", n_feats)
             for feature_idx in range(n_feats):
-                
+
                 if feature_idx not in tree.used_features:
                     feature_importances[feature_idx] += 0
                     continue
-                
+
                 # Permute in place
                 X_oob[:, feature_idx] = np.random.permutation(X_oob[:, feature_idx])
 
                 permuted_accuracy = np.mean(tree.predict(X_oob) == y_oob)
 
-                feature_importances[feature_idx] += baseline_accuracy - permuted_accuracy
-            
+                feature_importances[feature_idx] += (
+                    baseline_accuracy - permuted_accuracy
+                )
+
                 # Unpermute
                 X_oob[:, feature_idx] = self.X[oob_indices, feature_idx]
 
-
         # Average importance scores across all trees
         feature_importances /= total_trees
-        
+
         # Return normalized feature importances
         return (
             feature_importances / np.sum(feature_importances)
             if np.sum(feature_importances) > 0
             else feature_importances
         )
-        
+
     def importance3(self):
         """
         Compute permutation-based variable importance using out-of-bag (OOB) samples for tuples of 3 variables.
@@ -323,22 +328,22 @@ class RFModel:
             n_feats = self.X.shape[1]
             feature_indices = range(n_feats)
             tested = set()
-            
+
             other_feats = [f for f in feature_indices if f not in tree.used_features]
-            
+
             # Add them for safekeeping
             for comb in itertools.combinations(other_feats, r=3):
                 feats = tuple(sorted(comb))
-                
+
                 if feats not in feature_importances.keys():
                     feature_importances[feats] = 0
                 else:
                     feature_importances[feats] += 0
-                
+
             combs = list(itertools.combinations(tree.used_features, r=3))
-            
+
             print(len(combs), len(tree.used_features))
-            
+
             for comb in tqdm.tqdm(combs):
                 feats = tuple(sorted(comb))
 
@@ -348,8 +353,8 @@ class RFModel:
                     tested.add(feats)
 
                 if feats not in feature_importances.keys():
-                    feature_importances[feats] = 0                
-                
+                    feature_importances[feats] = 0
+
                 # Permute in place
                 for f in feats:
                     X_oob[:, f] = np.random.permutation(X_oob[:, f])
@@ -357,19 +362,18 @@ class RFModel:
                 permuted_accuracy = np.mean(tree.predict(X_oob) == y_oob)
 
                 feature_importances[feats] += baseline_accuracy - permuted_accuracy
-            
+
                 # Unpermute
                 for f in feats:
                     X_oob[:, f] = self.X[oob_indices, f]
             end = time.time()
-            
-            print("Tree took:", end-start, "seconds (", count, ")")
-            
+
+            print("Tree took:", end - start, "seconds (", count, ")")
+
         # TODO: get imps from dictionary as tested doesnt have all the combinations
         with open("feature_imps3.pkl", "wb") as f:
-            pickle.dump(feature_importances, f)    
-            
-            
+            pickle.dump(feature_importances, f)
+
         tested = sorted(list(feature_importances.keys()))
         scores = []
         for t in tested:
@@ -377,39 +381,90 @@ class RFModel:
 
         return scores, tested
 
+    def _get_feature_imps(self, node, imps):
+        if node.left_node is not None and node.right_node is not None:
+            imps[node.best_feature] += 1
+
+            if node.prediction is not None:
+                return imps
+
+            self._get_feature_imps(node.left_node, imps)
+            self._get_feature_imps(node.right_node, imps)
+
+        return imps
+    
+            
+
+    def importance3_structure(self):
+        """Traverses the tree with no known data and determines the feature importances based on the number of splits done with it"""
+        feature_importances = np.zeros(self.X.shape[1])
+        print("imp3 structure")
+        for i, tree in enumerate(self.trees):
+            
+            node = tree
+            feature_importances = self._get_feature_imps(node, feature_importances) # Used features have nonzero values
+
+        # Now find all possible combinations of the actually used combinations and simply compute the most used combination
+        all_features = np.nonzero(feature_importances)[0]
+        all_combs = list(itertools.combinations(list(all_features), r=3))
+        
+        max_importance = 0
+        best_comb = None
+        for comb in all_combs:
+            feats = tuple(sorted(comb))
+            importance = 0
+            for feat in feats:
+                importance += feature_importances[feat]
+                
+                
+            if importance > max_importance:
+                max_importance = importance
+                best_comb = feats    
+
+        return best_comb, max_importance
+
+
 def get_imp3_columns(X, rand=None):
     return [274, 275, 361]
 
+
 def get_imp_columns(X, rand=None):
     return [275, 274, 276]
+
 
 def compare_importances(train, test):
     # importance 3 best feats: 274., 275., 361.
     tree_imp = Tree(None, get_imp_columns, min_samples=2)
     tree_imp3 = Tree(None, get_imp3_columns, min_samples=2)
-    
+
     t1 = tree_imp.build(train[0], train[1])
     t3 = tree_imp3.build(train[0], train[1])
-    
+
     preds_imp1_test = t1.predict(test[0])
     preds_imp3_test = t3.predict(test[0])
-    
+
     preds_imp1_train = t1.predict(train[0])
     preds_imp3_train = t3.predict(train[0])
-    
-    imp1_trains, imp1_tests = bootstrap_error(train, test, preds_imp3_train, preds_imp3_test)
-    imp3_trains, imp3_tests = bootstrap_error(train, test, preds_imp3_train, preds_imp3_test)
-    
-    
+
+    imp1_trains, imp1_tests = bootstrap_error(
+        train, test, preds_imp3_train, preds_imp3_test
+    )
+    imp3_trains, imp3_tests = bootstrap_error(
+        train, test, preds_imp3_train, preds_imp3_test
+    )
+
     misclf_rate_test_imp1 = np.mean(imp1_tests)
     misclf_sd_test_imp1 = np.std(imp1_tests)
-    
+
     misclf_rate_test_imp3 = np.mean(imp3_tests)
     misclf_sd_test_imp3 = np.std(imp3_tests)
-    
-    print(f"Misclassification rate on features from 1000 trees, test set, single importances: {misclf_rate_test_imp1:.3f} +- {misclf_sd_test_imp1:.3f}")
-    print(f"Misclassification rate on features from 1000 trees, test set, 3 importances: {misclf_rate_test_imp3:.3f} +- {misclf_sd_test_imp3:.3f}")
-    
+
+    print(
+        f"Misclassification rate on features from 1000 trees, test set, single importances: {misclf_rate_test_imp1:.3f} +- {misclf_sd_test_imp1:.3f}"
+    )
+    print(
+        f"Misclassification rate on features from 1000 trees, test set, 3 importances: {misclf_rate_test_imp3:.3f} +- {misclf_sd_test_imp3:.3f}"
+    )
 
 
 def read_tab(fn, adict):
@@ -445,7 +500,7 @@ def hw_tree_full(train, test):
 
     # Reporting the uncertainty
     # Bootstrap the test data and report the mean and average errors
-    
+
     tree = Tree(rand=random.Random(1), get_candidate_columns=all_columns, min_samples=2)
 
     clf = tree.build(train[0], train[1])
@@ -453,71 +508,85 @@ def hw_tree_full(train, test):
     # Get predictions
     preds_train = clf.predict(train[0])
     preds_test = clf.predict(test[0])
-    
+
     # Bootstrap errors:
     trains, tests = [], []
     for i in range(100):
-        ix_boot_preds_test = np.random.choice(range(len(preds_test)), size=len(preds_test), replace=True)
-        ix_boot_preds_train = np.random.choice(range(len(preds_test)), size=len(preds_train), replace=True)
-        
+        ix_boot_preds_test = np.random.choice(
+            range(len(preds_test)), size=len(preds_test), replace=True
+        )
+        ix_boot_preds_train = np.random.choice(
+            range(len(preds_test)), size=len(preds_train), replace=True
+        )
+
         misclf_rate_train, misclf_sd_train = compute_metrics(
-            train[1][ix_boot_preds_train], preds_train[ix_boot_preds_train], len(train[1])
+            train[1][ix_boot_preds_train],
+            preds_train[ix_boot_preds_train],
+            len(train[1]),
         )
 
         misclf_rate_test, misclf_sd_test = compute_metrics(
             test[1][ix_boot_preds_test], preds_test[ix_boot_preds_test], len(test[1])
         )
-        
+
         trains.append(misclf_rate_train)
         tests.append(misclf_rate_test)
 
     misclf_rate_train = np.mean(trains)
     misclf_sd_train = np.std(trains)
-    
+
     misclf_rate_test = np.mean(tests)
     misclf_sd_test = np.std(tests)
-
 
     return (misclf_rate_train, misclf_sd_train), (misclf_rate_test, misclf_sd_test)
 
 
 def get_nonrandom_imps(train):
-    
-    tree = Tree(None, get_candidate_columns=all_columns, min_samples=len(train[0])-1)
+
+    tree = Tree(None, get_candidate_columns=all_columns, min_samples=len(train[0]) - 1)
     root_feats = []
     for i in range(100):
         print(i)
-        
-        rand_samples = np.random.choice(range(len(train[0])), len(train[0]), replace=True)
-        
+
+        rand_samples = np.random.choice(
+            range(len(train[0])), len(train[0]), replace=True
+        )
+
         X = train[0][rand_samples, :]
         y = train[1][rand_samples]
-        
+
         tm = tree.build(X, y)
 
         root_feats.append(tm.best_feature)
-        
+
     return root_feats
 
+
 def bootstrap_error(train, test, preds_train, preds_test):
-    trains, tests = [],[]
+    trains, tests = [], []
     for i in range(100):
-        ix_boot_preds_test = np.random.choice(range(len(preds_test)), size=len(preds_test), replace=True)
-        ix_boot_preds_train = np.random.choice(range(len(preds_test)), size=len(preds_train), replace=True)
-        
+        ix_boot_preds_test = np.random.choice(
+            range(len(preds_test)), size=len(preds_test), replace=True
+        )
+        ix_boot_preds_train = np.random.choice(
+            range(len(preds_test)), size=len(preds_train), replace=True
+        )
+
         misclf_rate_train, misclf_sd_train = compute_metrics(
-            train[1][ix_boot_preds_train], preds_train[ix_boot_preds_train], len(train[1])
+            train[1][ix_boot_preds_train],
+            preds_train[ix_boot_preds_train],
+            len(train[1]),
         )
 
         misclf_rate_test, misclf_sd_test = compute_metrics(
             test[1][ix_boot_preds_test], preds_test[ix_boot_preds_test], len(test[1])
         )
-        
+
         trains.append(misclf_rate_train)
         tests.append(misclf_rate_test)
-        
+
     return trains, tests
-        
+
 
 def hw_randomforests(train, test, plot=False):
     """Builds a random forest on train data and reports accuracy
@@ -530,40 +599,51 @@ def hw_randomforests(train, test, plot=False):
     # Get predictions
     preds_train = rf.predict(train[0])
     preds_test = rf.predict(test[0])
-    
+
     # Bootstrap errors:
     trains, tests = bootstrap_error(train, test, preds_train, preds_test)
 
     misclf_rate_train = np.mean(trains)
     misclf_sd_train = np.std(trains)
-    
+
     misclf_rate_test = np.mean(tests)
     misclf_sd_test = np.std(tests)
 
     start = time.time()
     importances = rf.importance()
     end = time.time()
-    
+
     np.save("importances_normal.npy", importances)
     # np.savetxt("importances_normal_names.txt", names)
-    
+
     if plot:
         nonrandom_feats = get_nonrandom_imps(train)
-        
+
         nonrandom_imps = np.zeros(importances.shape)
         nonrandom_imps[nonrandom_feats] = importances[nonrandom_feats]
-        
-        plt.figure(figsize=(9,6))
+
+        plt.figure(figsize=(9, 6))
         plt.bar(range(len(importances)), importances, label="RF importances")
         plt.bar(range(len(importances)), nonrandom_imps, label="Root importances")
         plt.legend()
         plt.show()
-    
-    print("importances took ", end-start)    
-    
+
+    print("importances took ", end - start)
+
     plt.show()
 
     return (misclf_rate_train, misclf_sd_train), (misclf_rate_test, misclf_sd_test)
+
+
+def test_rf_importance_unknown(train):
+    rf = RandomForest(random.Random(0), n=100)
+    rf = rf.build(train[0], train[1])
+
+    best_comb, max_imp = rf.importance3_structure()
+
+    print("importances3_structure: best features and common number of splits on 100 trees:")
+    print(best_comb, max_imp)
+    print("--------------------------")
 
 
 if __name__ == "__main__":
@@ -572,6 +652,7 @@ if __name__ == "__main__":
 
     # Compare importances with importances 3 (tree with top 3 features)
     compare_importances(learn, test)
+    test_rf_importance_unknown(learn)
 
     start = time.time()
 
