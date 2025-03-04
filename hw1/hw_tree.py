@@ -304,10 +304,11 @@ class RFModel:
         """
 
         feature_importances = {}
-        total_trees = len(self.trees)
 
         start = time.time()
+        count = 0
         for tree, oob_indices in zip(self.trees, self.oob_samples):
+            count += 1
             # Identify OOB samples for this tree
             if len(oob_indices) == 0:
                 continue  # Skip if no OOB samples
@@ -362,35 +363,53 @@ class RFModel:
                     X_oob[:, f] = self.X[oob_indices, f]
             end = time.time()
             
-            print("Tree took:", end-start, "seconds")
+            print("Tree took:", end-start, "seconds (", count, ")")
             
-        top5 = [0,0,0,0,0,0]
-        top5_names = ["","","","","","",""]
-        for k, v in feature_importances:
-            if v >= np.max(top5):
-                min_ix = np.argmin(top5)
-                top5[min_ix] = v
-                top5_names[min_ix] = k
-                
-        with open("top5_feats.pkl", "wb") as f:
-            pickle.dump(top5, f)
-            
-        top5_names = np.array(top5_names)
-        np.savetxt("top5_names.txt", top5_names)
-                
-        print(np.argsort())    
-        
         # TODO: get imps from dictionary as tested doesnt have all the combinations
         with open("feature_imps3.pkl", "wb") as f:
             pickle.dump(feature_importances, f)    
-        
-        tested = sorted(list(tested))
+            
+            
+        tested = sorted(list(feature_importances.keys()))
         scores = []
         for t in tested:
             scores.append(feature_importances[t])
 
         return scores, tested
 
+def get_imp3_columns(X, rand=None):
+    return [274, 275, 361]
+
+def get_imp_columns(X, rand=None):
+    return [275, 274, 276]
+
+def compare_importances(train, test):
+    # importance 3 best feats: 274., 275., 361.
+    tree_imp = Tree(None, get_imp_columns, min_samples=2)
+    tree_imp3 = Tree(None, get_imp3_columns, min_samples=2)
+    
+    t1 = tree_imp.build(train[0], train[1])
+    t3 = tree_imp3.build(train[0], train[1])
+    
+    preds_imp1_test = t1.predict(test[0])
+    preds_imp3_test = t3.predict(test[0])
+    
+    preds_imp1_train = t1.predict(train[0])
+    preds_imp3_train = t3.predict(train[0])
+    
+    imp1_trains, imp1_tests = bootstrap_error(train, test, preds_imp3_train, preds_imp3_test)
+    imp3_trains, imp3_tests = bootstrap_error(train, test, preds_imp3_train, preds_imp3_test)
+    
+    
+    misclf_rate_test_imp1 = np.mean(imp1_tests)
+    misclf_sd_test_imp1 = np.std(imp1_tests)
+    
+    misclf_rate_test_imp3 = np.mean(imp3_tests)
+    misclf_sd_test_imp3 = np.std(imp3_tests)
+    
+    print(f"Misclassification rate on features from 1000 trees, test set, single importances: {misclf_rate_test_imp1:.3f} +- {misclf_sd_test_imp1:.3f}")
+    print(f"Misclassification rate on features from 1000 trees, test set, 3 importances: {misclf_rate_test_imp3:.3f} +- {misclf_sd_test_imp3:.3f}")
+    
 
 
 def read_tab(fn, adict):
@@ -480,21 +499,8 @@ def get_nonrandom_imps(train):
         
     return root_feats
 
-
-def hw_randomforests(train, test, plot=False):
-    """Builds a random forest on train data and reports accuracy
-    and standard error when using train and test data as tests.
-    """
-    rf = RandomForest(rand=random.Random(0), n=1000)
-
-    rf = rf.build(train[0], train[1])
-
-    # Get predictions
-    preds_train = rf.predict(train[0])
-    preds_test = rf.predict(test[0])
-    
-    # Bootstrap errors:
-    trains, tests = [], []
+def bootstrap_error(train, test, preds_train, preds_test):
+    trains, tests = [],[]
     for i in range(100):
         ix_boot_preds_test = np.random.choice(range(len(preds_test)), size=len(preds_test), replace=True)
         ix_boot_preds_train = np.random.choice(range(len(preds_test)), size=len(preds_train), replace=True)
@@ -509,6 +515,24 @@ def hw_randomforests(train, test, plot=False):
         
         trains.append(misclf_rate_train)
         tests.append(misclf_rate_test)
+        
+    return trains, tests
+        
+
+def hw_randomforests(train, test, plot=False):
+    """Builds a random forest on train data and reports accuracy
+    and standard error when using train and test data as tests.
+    """
+    rf = RandomForest(rand=random.Random(0), n=1000)
+
+    rf = rf.build(train[0], train[1])
+
+    # Get predictions
+    preds_train = rf.predict(train[0])
+    preds_test = rf.predict(test[0])
+    
+    # Bootstrap errors:
+    trains, tests = bootstrap_error(train, test, preds_train, preds_test)
 
     misclf_rate_train = np.mean(trains)
     misclf_sd_train = np.std(trains)
@@ -517,12 +541,11 @@ def hw_randomforests(train, test, plot=False):
     misclf_sd_test = np.std(tests)
 
     start = time.time()
-    importances = rf.importance3()
+    importances = rf.importance()
     end = time.time()
     
-    scores, names = importances
-    np.save("importances3.npy", np.array(scores))
-    np.savetxt("importances3_names.txt", names)
+    np.save("importances_normal.npy", importances)
+    # np.savetxt("importances_normal_names.txt", names)
     
     if plot:
         nonrandom_feats = get_nonrandom_imps(train)
@@ -546,6 +569,9 @@ def hw_randomforests(train, test, plot=False):
 if __name__ == "__main__":
 
     learn, test, header = tki()
+
+    # Compare importances with importances 3 (tree with top 3 features)
+    compare_importances(learn, test)
 
     start = time.time()
 
