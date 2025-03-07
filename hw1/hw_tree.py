@@ -663,6 +663,34 @@ def hw_randomforests_sized(train, test, plot=False):
    
     return results
 
+def drawing():
+    results = np.load("results.npy")
+    
+    n_trees = [el[0] for el in results]
+    misclf = [el[1] for el in results]
+    sd = [el[2] for el in results]
+    
+    plt.figure(figsize=(9, 6))
+    plt.errorbar(n_trees, misclf, yerr=sd, fmt='-o', ecolor="black", capsize=5, label="Misclassification Rate")
+    plt.legend()
+    plt.xlabel("Number of trees", fontsize=14)
+    plt.ylabel("Misclassification rate", fontsize=14)
+    for i, (x, y) in enumerate(zip(range(0, 501, 50), misclf)):
+        plt.text(x-10, y+.008, f"{(sd[i]*100):.2f}%")
+
+    plt.xticks(range(0, 501, 50), rotation=45)
+    plt.grid(True)
+    
+def draw_imps():
+    importances = np.load("imps.npy")
+    nonrandom_imps = np.load("nr_imps.npy")
+    
+    plt.figure(figsize=(9,6))
+    plt.bar(range(len(importances)), importances, label="RF importances")
+    plt.bar(range(len(importances)), nonrandom_imps, label="Root importances")
+    plt.legend()
+    plt.show()
+    
 
 def test_rf_importance_unknown(train):
     rf = RandomForest(random.Random(RANDOM_SEED), n=100)
