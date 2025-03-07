@@ -8,6 +8,7 @@ import itertools
 import tqdm
 import pickle
 
+RANDOM_SEED = 0
 
 def all_columns(X: np.ndarray, rand: int):
     return range(X.shape[1])
@@ -42,6 +43,7 @@ class Tree:
             return 0.0
 
         # TODO: Cache the value counts - count one side and avoid recounting the values!
+        # Or rely on numpy being fast enough
         counts = Counter(y)
         probs = [count / len(y) for count in counts.values()]
 
@@ -273,7 +275,7 @@ class RFModel:
 
             # Permute each feature and measure accuracy drop
             n_feats = self.X.shape[1]
-            print("Features to check:", len(tree.used_features), "/", n_feats)
+            # print("Features to check:", len(tree.used_features), "/", n_feats)
             for feature_idx in range(n_feats):
 
                 if feature_idx not in tree.used_features:
@@ -370,7 +372,6 @@ class RFModel:
 
             print("Tree took:", end - start, "seconds (", count, ")")
 
-        # TODO: get imps from dictionary as tested doesnt have all the combinations
         with open("feature_imps3.pkl", "wb") as f:
             pickle.dump(feature_importances, f)
 
@@ -381,29 +382,36 @@ class RFModel:
 
         return scores, tested
 
-    def _get_feature_imps(self, node, imps):
+    def _get_feature_imps(self, node, imps, depth, curr_depth):
         if node.left_node is not None and node.right_node is not None:
             imps[node.best_feature] += 1
+            depth[node.best_feature] += curr_depth
 
             if node.prediction is not None:
                 return imps
 
-            self._get_feature_imps(node.left_node, imps)
-            self._get_feature_imps(node.right_node, imps)
+            self._get_feature_imps(node.left_node, imps, depth, curr_depth+1)
+            self._get_feature_imps(node.right_node, imps, depth, curr_depth+1)
 
-        return imps
+        return imps, depth
     
             
 
-    def importance3_structure(self):
+    def importance3_structure(self, account_for_depth=False):
         """Traverses the tree with no known data and determines the feature importances based on the number of splits done with it"""
         feature_importances = np.zeros(self.X.shape[1])
+        depth = np.zeros(self.X.shape[1])
         print("imp3 structure")
         for i, tree in enumerate(self.trees):
             
             node = tree
-            feature_importances = self._get_feature_imps(node, feature_importances) # Used features have nonzero values
+            feature_importances, depth = self._get_feature_imps(node, feature_importances, depth, 0) # Used features have nonzero values
 
+
+        # normalize depth and feature_imps
+        feature_importances /= sum(feature_importances)
+        log_depth = 1 / np.log(depth + 2)
+        
         # Now find all possible combinations of the actually used combinations and simply compute the most used combination
         all_features = np.nonzero(feature_importances)[0]
         all_combs = list(itertools.combinations(list(all_features), r=3))
@@ -414,9 +422,10 @@ class RFModel:
             feats = tuple(sorted(comb))
             importance = 0
             for feat in feats:
-                importance += feature_importances[feat]
-                
-                
+                if account_for_depth:
+                    importance += feature_importances[feat] + log_depth[feat]
+                else:
+                    importance += feature_importances[feat]
             if importance > max_importance:
                 max_importance = importance
                 best_comb = feats    
@@ -425,17 +434,20 @@ class RFModel:
 
 
 def get_imp3_columns(X, rand=None):
-    return [274, 275, 361]
+    # return [49, 162, 259]   # log scale 33.4
+    # return[274, 279, 362]   # Inverse freq, normalized, 38
+    return [274, 275, 361]  # importances3 best feats
 
 
 def get_imp_columns(X, rand=None):
+    # return [276, 330, 379]  # without depth
     return [275, 274, 276]
 
 
-def compare_importances(train, test):
+def compare_importances(train, test, rand):
     # importance 3 best feats: 274., 275., 361.
-    tree_imp = Tree(None, get_imp_columns, min_samples=2)
-    tree_imp3 = Tree(None, get_imp3_columns, min_samples=2)
+    tree_imp = Tree(rand, get_imp_columns, min_samples=2)
+    tree_imp3 = Tree(rand, get_imp3_columns, min_samples=2)
 
     t1 = tree_imp.build(train[0], train[1])
     t3 = tree_imp3.build(train[0], train[1])
@@ -446,24 +458,25 @@ def compare_importances(train, test):
     preds_imp1_train = t1.predict(train[0])
     preds_imp3_train = t3.predict(train[0])
 
+    n_boot = 200
     imp1_trains, imp1_tests = bootstrap_error(
-        train, test, preds_imp3_train, preds_imp3_test
+        train, test, preds_imp1_train, preds_imp1_test, n_boot, rand
     )
     imp3_trains, imp3_tests = bootstrap_error(
-        train, test, preds_imp3_train, preds_imp3_test
+        train, test, preds_imp3_train, preds_imp3_test, n_boot, rand
     )
 
     misclf_rate_test_imp1 = np.mean(imp1_tests)
-    misclf_sd_test_imp1 = np.std(imp1_tests)
+    misclf_sd_test_imp1 = np.std(imp1_tests, ddof=1) / np.sqrt(n_boot)
 
     misclf_rate_test_imp3 = np.mean(imp3_tests)
-    misclf_sd_test_imp3 = np.std(imp3_tests)
+    misclf_sd_test_imp3 = np.std(imp3_tests, ddof=1) / np.sqrt(n_boot)
 
     print(
-        f"Misclassification rate on features from 1000 trees, test set, single importances: {misclf_rate_test_imp1:.3f} +- {misclf_sd_test_imp1:.3f}"
+        f"Misclassification rate on features from 1000 trees, test set, single importances: {misclf_rate_test_imp1:.4f} +- {misclf_sd_test_imp1:.4f}"
     )
     print(
-        f"Misclassification rate on features from 1000 trees, test set, 3 importances: {misclf_rate_test_imp3:.3f} +- {misclf_sd_test_imp3:.3f}"
+        f"Misclassification rate on features from 1000 trees, test set, 3 importances: {misclf_rate_test_imp3:.4f} +- {misclf_sd_test_imp3:.4f}"
     )
 
 
@@ -510,33 +523,14 @@ def hw_tree_full(train, test):
     preds_test = clf.predict(test[0])
 
     # Bootstrap errors:
-    trains, tests = [], []
-    for i in range(100):
-        ix_boot_preds_test = np.random.choice(
-            range(len(preds_test)), size=len(preds_test), replace=True
-        )
-        ix_boot_preds_train = np.random.choice(
-            range(len(preds_test)), size=len(preds_train), replace=True
-        )
-
-        misclf_rate_train, misclf_sd_train = compute_metrics(
-            train[1][ix_boot_preds_train],
-            preds_train[ix_boot_preds_train],
-            len(train[1]),
-        )
-
-        misclf_rate_test, misclf_sd_test = compute_metrics(
-            test[1][ix_boot_preds_test], preds_test[ix_boot_preds_test], len(test[1])
-        )
-
-        trains.append(misclf_rate_train)
-        tests.append(misclf_rate_test)
+    n_boot = 200
+    trains, tests = bootstrap_error(train, test, preds_train, preds_test, n_boot)
 
     misclf_rate_train = np.mean(trains)
-    misclf_sd_train = np.std(trains)
+    misclf_sd_train = np.std(trains, ddof=1) / np.sqrt(n_boot)
 
     misclf_rate_test = np.mean(tests)
-    misclf_sd_test = np.std(tests)
+    misclf_sd_test = np.std(tests, ddof=1) / np.sqrt(n_boot)
 
     return (misclf_rate_train, misclf_sd_train), (misclf_rate_test, misclf_sd_test)
 
@@ -562,15 +556,13 @@ def get_nonrandom_imps(train):
     return root_feats
 
 
-def bootstrap_error(train, test, preds_train, preds_test):
+def bootstrap_error(train, test, preds_train, preds_test, n_boot=100, rand=random.Random(RANDOM_SEED)):
     trains, tests = [], []
-    for i in range(100):
-        ix_boot_preds_test = np.random.choice(
-            range(len(preds_test)), size=len(preds_test), replace=True
-        )
-        ix_boot_preds_train = np.random.choice(
-            range(len(preds_test)), size=len(preds_train), replace=True
-        )
+    for i in range(n_boot):
+        ix_boot_preds_test = rand.choices(
+            range(len(preds_test)), k=len(preds_test))
+        ix_boot_preds_train = rand.choices(
+            range(len(preds_test)), k=len(preds_train))
 
         misclf_rate_train, misclf_sd_train = compute_metrics(
             train[1][ix_boot_preds_train],
@@ -584,6 +576,8 @@ def bootstrap_error(train, test, preds_train, preds_test):
 
         trains.append(misclf_rate_train)
         tests.append(misclf_rate_test)
+        # trains.append((misclf_rate_train, misclf_sd_train))
+        # tests.append((misclf_rate_test, misclf_sd_test))
 
     return trains, tests
 
@@ -592,7 +586,7 @@ def hw_randomforests(train, test, plot=False):
     """Builds a random forest on train data and reports accuracy
     and standard error when using train and test data as tests.
     """
-    rf = RandomForest(rand=random.Random(0), n=1000)
+    rf = RandomForest(rand=random.Random(RANDOM_SEED), n=100)
 
     rf = rf.build(train[0], train[1])
 
@@ -601,13 +595,14 @@ def hw_randomforests(train, test, plot=False):
     preds_test = rf.predict(test[0])
 
     # Bootstrap errors:
-    trains, tests = bootstrap_error(train, test, preds_train, preds_test)
+    n_boot = 200
+    trains, tests = bootstrap_error(train, test, preds_train, preds_test, n_boot)
 
     misclf_rate_train = np.mean(trains)
-    misclf_sd_train = np.std(trains)
+    misclf_sd_train = np.std(trains, ddof=1) / np.sqrt(n_boot)
 
     misclf_rate_test = np.mean(tests)
-    misclf_sd_test = np.std(tests)
+    misclf_sd_test = np.std(tests, ddof=1)  / np.sqrt(n_boot)
 
     start = time.time()
     importances = rf.importance()
@@ -616,6 +611,7 @@ def hw_randomforests(train, test, plot=False):
     np.save("importances_normal.npy", importances)
     # np.savetxt("importances_normal_names.txt", names)
 
+    # Plot importances and non-random tree importances
     if plot:
         nonrandom_feats = get_nonrandom_imps(train)
 
@@ -635,11 +631,44 @@ def hw_randomforests(train, test, plot=False):
     return (misclf_rate_train, misclf_sd_train), (misclf_rate_test, misclf_sd_test)
 
 
+def hw_randomforests_sized(train, test, plot=False):
+    """Builds a random forest and tests forests with different amount of trees - reports test error
+    """
+    
+    results = []
+    
+    for n in range(1, 502, 50):
+
+        print(n)
+        
+        rf = RandomForest(rand=random.Random(0), n=n)
+
+        rf = rf.build(train[0], train[1])
+
+        # Get predictions
+        preds_train = rf.predict(train[0])
+        preds_test = rf.predict(test[0])
+
+        # Bootstrap errors:
+        n_boot = 200
+        trains, tests = bootstrap_error(train, test, preds_train, preds_test, n_boot)
+
+        # misclf_rate_train = np.mean(trains)
+        # misclf_sd_train = np.std(trains, ddof=1) / np.sqrt(n_boot)
+
+        misclf_rate_test = np.mean(tests)
+        misclf_sd_test = np.std(tests, ddof=1) / np.sqrt(n_boot)
+
+        results.append((n, misclf_rate_test, misclf_sd_test))
+   
+    return results
+
+
 def test_rf_importance_unknown(train):
-    rf = RandomForest(random.Random(0), n=100)
+    rf = RandomForest(random.Random(RANDOM_SEED), n=100)
     rf = rf.build(train[0], train[1])
 
-    best_comb, max_imp = rf.importance3_structure()
+    best_comb, max_imp = rf.importance3_structure(account_for_depth=False)
 
     print("importances3_structure: best features and common number of splits on 100 trees:")
     print(best_comb, max_imp)
@@ -650,19 +679,30 @@ if __name__ == "__main__":
 
     learn, test, header = tki()
 
-    # Compare importances with importances 3 (tree with top 3 features)
-    compare_importances(learn, test)
-    test_rf_importance_unknown(learn)
-
     start = time.time()
 
+    # 1.1
     print("full", hw_tree_full(learn, test))
 
     tree_end = time.time()
 
+    # Full random forest - return misclf rate & compute importances (1.2 + 2 (importances))
     print("random forests", hw_randomforests(learn, test))
 
     end = time.time()
 
     print(f"Tree took {(tree_end - start):.2f} seconds.")
     print(f"RF took {(end - tree_end):.2f} seconds.")
+    
+    # Get misclf rate based on number of trees (1.3)
+    # results = hw_randomforests_sized(learn, test)
+    # results = np.array(results)
+    # np.save("results.npy", results)
+
+    # Compare importances with importances 3 (tree with top 3 features), 3.1
+    compare_importances(learn, test, random.Random(RANDOM_SEED))
+    
+    # 3.2 (imp3_structure)
+    test_rf_importance_unknown(learn)
+    
+    # 
