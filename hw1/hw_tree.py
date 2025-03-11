@@ -468,10 +468,10 @@ def compare_importances(train, test, rand):
     )
 
     misclf_rate_test_imp1 = np.mean(imp1_tests)
-    misclf_sd_test_imp1 = np.std(imp1_tests, ddof=1) / np.sqrt(n_boot)
+    misclf_sd_test_imp1 = np.std(imp1_tests, ddof=1) #/ np.sqrt(n_boot)
 
     misclf_rate_test_imp3 = np.mean(imp3_tests)
-    misclf_sd_test_imp3 = np.std(imp3_tests, ddof=1) / np.sqrt(n_boot)
+    misclf_sd_test_imp3 = np.std(imp3_tests, ddof=1) #/ np.sqrt(n_boot)
 
     print(
         f"Misclassification rate on features from 1000 trees, test set, single importances: {misclf_rate_test_imp1:.4f} +- {misclf_sd_test_imp1:.4f}"
@@ -528,10 +528,10 @@ def hw_tree_full(train, test):
     trains, tests = bootstrap_error(train, test, preds_train, preds_test, n_boot)
 
     misclf_rate_train = np.mean(trains)
-    misclf_sd_train = np.std(trains, ddof=1) / np.sqrt(n_boot)
+    misclf_sd_train = np.std(trains, ddof=1) #/ np.sqrt(n_boot)
 
     misclf_rate_test = np.mean(tests)
-    misclf_sd_test = np.std(tests, ddof=1) / np.sqrt(n_boot)
+    misclf_sd_test = np.std(tests, ddof=1) #/ np.sqrt(n_boot)
 
     return (misclf_rate_train, misclf_sd_train), (misclf_rate_test, misclf_sd_test)
 
@@ -600,10 +600,10 @@ def hw_randomforests(train, test, plot=False):
     trains, tests = bootstrap_error(train, test, preds_train, preds_test, n_boot)
 
     misclf_rate_train = np.mean(trains)
-    misclf_sd_train = np.std(trains, ddof=1) / np.sqrt(n_boot)
+    misclf_sd_train = np.std(trains, ddof=1) #/ np.sqrt(n_boot)
 
     misclf_rate_test = np.mean(tests)
-    misclf_sd_test = np.std(tests, ddof=1)  / np.sqrt(n_boot)
+    misclf_sd_test = np.std(tests, ddof=1)  #/ np.sqrt(n_boot)
 
     start = time.time()
     importances = rf.importance()
@@ -658,7 +658,7 @@ def hw_randomforests_sized(train, test, plot=False):
         # misclf_sd_train = np.std(trains, ddof=1) / np.sqrt(n_boot)
 
         misclf_rate_test = np.mean(tests)
-        misclf_sd_test = np.std(tests, ddof=1) / np.sqrt(n_boot)
+        misclf_sd_test = np.std(tests, ddof=1) #/ np.sqrt(n_boot)
 
         results.append((n, misclf_rate_test, misclf_sd_test))
    
@@ -791,7 +791,7 @@ class MyTests(unittest.TestCase):
 
 if __name__ == "__main__":
     
-    unittest.main()
+    # unittest.main()
 
     learn, test, header = tki()
 
@@ -811,9 +811,9 @@ if __name__ == "__main__":
     print(f"RF took {(end - tree_end):.2f} seconds.")
     
     # Get misclf rate based on number of trees (1.3)
-    # results = hw_randomforests_sized(learn, test)
-    # results = np.array(results)
-    # np.save("results.npy", results)
+    results = hw_randomforests_sized(learn, test)
+    results = np.array(results)
+    np.save("results.npy", results)
 
     # Compare importances with importances 3 (tree with top 3 features), 3.1
     compare_importances(learn, test, random.Random(RANDOM_SEED))
