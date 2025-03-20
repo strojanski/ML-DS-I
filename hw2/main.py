@@ -17,7 +17,7 @@ warnings.filterwarnings("ignore")
 RANDOM_SEED = 0
 TARGET = "ShotType"
 categorical_cols = ["Competition", "PlayerType", "Movement"]
-regularization_params = [1e-2, 1e-1]
+regularization_params = [1e-2, 1e-1, 1]
 kernels = ["linear", "rbf"]
 
 
@@ -149,27 +149,31 @@ def cross_validate(df, folds, model, svm=False):
 
 def cross_validate_train_optimization(df, folds):
     
-    best_log = -np.inf
-    best_c = None
-    best_kernel = None
-    best_gamma = None
+    logscores = []
+    accs = []
     
-    for C in regularization_params:
-        for kernel in kernels:
-            gammas = ["scale"]
-            if kernel == "rbf":
-                gammas = [1e-2, 1e-1, 1, "scale"]
-            
-            for gamma in gammas:
-                model = svc(C=C, max_iter=100, kernel=kernel, gamma=gamma)
-                logscores = []
-                accs = []
-                
-                for i, fold in enumerate(folds):
-                    train, test = get_train_test_folds(df, fold, i)
-                    X_train, y_train = train.drop(columns=[TARGET]), train[TARGET]
+    
+    for i, fold in enumerate(folds):
+        best_log = -np.inf
+        best_c = None
+        best_kernel = None
+        best_gamma = None
+        best_accuracy = None
+        tmp_logs = []
+        
+        train, test = get_train_test_folds(df, fold, i)
+        X_train, y_train = train.drop(columns=[TARGET]), train[TARGET]
+        X_test, y_test = test.drop(columns=[TARGET]), test[TARGET]
 
-                    X_train, X_test = scale_data(X_train, X_train)
+        X_train, X_test = scale_data(X_train, X_test)
+        for C in regularization_params:
+            for kernel in kernels:
+                gammas = ["scale"]
+                if kernel == "rbf":
+                    gammas = [1e-2, 1e-1, 1, "scale"]
+                
+                for gamma in gammas:
+                    model = svc(C=C, max_iter=200, kernel=kernel, gamma=gamma)
 
                     model.fit(X_train, y_train)
                     
@@ -179,13 +183,12 @@ def cross_validate_train_optimization(df, folds):
                     logscore = log_score(y_train, pred_probs)
                     acc = accuracy(y_train, preds)
                     
-                    logscores.append(logscore)
-                    accs.append(acc)
+                    tmp_logs.append(logscore)
+                    # accs.append(acc)
                     
                     print(f"C: {C}, kernel: {kernel} gamma: {gamma} :: log score: {logscore}, accuracy: {acc}")
                     
-                mean_log = np.mean(logscores)
-                mean_acc = np.mean(accs)
+                mean_log = np.mean(tmp_logs)
                 
                 # TODO account for accuracy
                 if mean_log > best_log:
@@ -193,8 +196,23 @@ def cross_validate_train_optimization(df, folds):
                     best_kernel = kernel
                     best_gamma = gamma
                     best_c = C
+
+
+        print("Fold number and best params: ", i, best_c, best_kernel, best_log)
+        model = svc(C=best_c, max_iter=200, kernel=best_kernel, gamma=best_gamma)
+        
+        model.fit(X_train, y_train)
+        
+        preds = model.predict(X_test)
+        pred_probs = model.predict_proba(X_test)
+        
+        logscore = log_score(y_test, pred_probs)
+        acc = accuracy(y_test, preds)
+        
+        logscores.append(logscore)
+        accs.append(acc)
             
-    return best_c, best_kernel, best_gamma, best_log
+    return best_c, best_kernel, best_gamma, logscores, accs
         
 def nested_cross_validation(df, folds):
     scores = []
@@ -220,7 +238,7 @@ def nested_cross_validation(df, folds):
                 
                 for gamma in gammas:
                 
-                    model = svc(C=C, max_iter=1000, kernel=kernel, gamma=gamma)
+                    model = svc(C=C, max_iter=200, kernel=kernel, gamma=gamma)
                     
                     logscores = []
                     accs = []
@@ -261,7 +279,7 @@ def nested_cross_validation(df, folds):
         X_test, y_test = test.drop(columns=[TARGET]), test[TARGET]
         
         X_train, X_test = scale_data(X_train, X_test)
-        model = svc(C=best_c, max_iter=1000, kernel=best_kernel, gamma=best_gamma)
+        model = svc(C=best_c, max_iter=200, kernel=best_kernel, gamma=best_gamma)
         
         model.fit(X_train, y_train)
         
@@ -290,7 +308,7 @@ def bootstrap(arr, n):
     return scores
         
 def pprint(score, uncertainty):
-    print(f"{score:.3f} +- {uncertainty:.3f}")
+    print(f"{score:.4f} +- {uncertainty:.4f}")
         
 def compute_score_statistics(scores):
     logs = [score[0] for score in scores]
@@ -379,6 +397,15 @@ if __name__ == "__main__":
     df = pd.DataFrame()
 
     # Create separate columns for each fold (errors_0, errors_1, etc.)
+    (svmlogs, svlogs_se), (svmaccs, svmaccs_se) = compute_score_statistics(svm_scores)
+    
+    # SVM training fold performance optimization
+    print("SVM train fold optimization:")
+    svm_train_scores = cross_validate_train_optimization(_df, folds)
+    print(svm_train_scores)
+    a, b = svm_train_scores[-2], svm_train_scores[-1]
+    print(compute_score_statistics(zip(a,b)))
+    
     folds = len(errs)
     for i in range(folds):
         
@@ -387,19 +414,10 @@ if __name__ == "__main__":
         df = pd.concat([df, _df], axis=1)
 
     df.to_csv("log_distance_errors.csv")
-    exit()
-    (svmlogs, svlogs_se), (svmaccs, svmaccs_se) = compute_score_statistics(svm_scores)
     end = time.time()
     
     print("SVM CV took", end-start)
     print("SVM iterations:", svm.n_iter_)
-    
-    
-    # SVM training fold performance optimization
-    # print("SVM train fold optimization:")
-    # svm_train_scores = cross_validate_train_optimization(_df, folds)
-    # print(svm_train_scores)
-    
     
     print("SVM Nested CV")
     svm_nested_cv = nested_cross_validation(_df, folds)
