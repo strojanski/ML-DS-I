@@ -211,6 +211,12 @@ def cross_validate_train_optimization(df, folds):
         
         logscores.append(logscore)
         accs.append(acc)
+        
+    final_log, (log_lb, log_ub) = bootstrap_metric(logscores)
+    final_acc, (acc_lb, acc_ub) = bootstrap_metric(accs)
+    print(f"\nFinal Nested CV Log Score: {final_log:.4f} (CI: [{log_lb:.4f}, {log_ub:.4f}])")
+    print(f"Final Nested CV Accuracy: {final_acc:.4f} (CI: [{acc_lb:.4f}, {acc_ub:.4f}])")
+    
             
     return best_c, best_kernel, best_gamma, logscores, accs
         
@@ -292,44 +298,42 @@ def nested_cross_validation(df, folds):
         print(f"Best C: {C}, Best kernel: {kernel} :: log score: {logscore}, accuracy: {acc} (fold {i})")
         print()
         scores.append((logscore, acc))
-    # End outer CV  
-      
+        
+        # Compute final bootstrapped confidence intervals
+    final_log, (log_lb, log_ub) = bootstrap_metric([s[0] for s in scores])
+    final_acc, (acc_lb, acc_ub) = bootstrap_metric([s[1] for s in scores])
+    print(f"\nFinal Nested CV Log Score: {final_log:.4f} (CI: [{log_lb:.4f}, {log_ub:.4f}])")
+    print(f"Final Nested CV Accuracy: {final_acc:.4f} (CI: [{acc_lb:.4f}, {acc_ub:.4f}])")
+    
+    
     return scores                 
             
-def bootstrap(arr, n):
-    arr = np.array(arr)
-    
-    scores = []
-    
-    for _ in range(n):
-        sample = np.random.choice(arr, len(arr), replace=True)
-        scores.append(np.mean(sample))
-    
-    return scores
+def bootstrap_metric(metric_values, n_boot=1000, ci=95):
+    """Bootstrap confidence intervals for a given metric."""
+    boot_samples = np.random.choice(metric_values, (n_boot, len(metric_values)), replace=True)
+    boot_means = np.mean(boot_samples, axis=1)
+    lower_bound = np.percentile(boot_means, (100 - ci) / 2)
+    upper_bound = np.percentile(boot_means, 100 - (100 - ci) / 2)
+    return np.mean(boot_means), np.std(boot_means, ddof=1), (lower_bound, upper_bound)
         
 def pprint(score, uncertainty):
     print(f"{score:.4f} +- {uncertainty:.4f}")
         
 def compute_score_statistics(scores):
-    logs = [score[0] for score in scores]
-    accs = [score[1] for score in scores]
+    final_log, se_log, (log_lb, log_ub) = bootstrap_metric([s[0] for s in scores])
+    final_acc, se_acc, (acc_lb, acc_ub) = bootstrap_metric([s[1] for s in scores])
+    print(f"\nFinal CV Log Score: {final_log:.4f} (CI: [{log_lb:.4f}, {log_ub:.4f}])")
+    print(f"Final CV Accuracy: {final_acc:.4f} (CI: [{acc_lb:.4f}, {acc_ub:.4f}])")
     
-    # logs = bootstrap(logs, 100)
-    # accs = bootstrap(accs, 100)
-    logs_se = np.std(logs)
-    accs_se = np.std(accs)
-    
-    logs = np.mean(logs)
-    accs = np.mean(accs)
     
     print("Log score:")
-    pprint(logs, logs_se)
+    pprint(final_log, se_log)
     print("Accuracy:")
-    pprint(accs, accs_se)
+    pprint(final_acc, se_acc)
     print()
 
     
-    return (logs, logs_se), (accs, accs_se)
+    return (final_log, se_log), (final_acc, se_acc)
     
 def encode_labels(df, columns):
     le = LabelEncoder()
@@ -379,12 +383,13 @@ if __name__ == "__main__":
     print("Baseline:")
     baseline_scores, _ = cross_validate(_df, folds, baseline_clf)
     (blogs, blogs_se), (baccs, baccs_se) = compute_score_statistics(baseline_scores)
+    print(baseline_scores)
     
     # LR scores
     print("Logistic regression:")
     lr_scores, _ = cross_validate(_df, folds, logistic_clf)
     (lrlogs, lrlogs_se), (lraccs, lraccs_se) = compute_score_statistics(lr_scores)
-    
+    print(lr_scores)
     
     start = time.time()
     # SVM scores
@@ -393,9 +398,6 @@ if __name__ == "__main__":
 
     errs, distances, comps = p2
     
-    # Create the DataFrame
-    df = pd.DataFrame()
-
     # Create separate columns for each fold (errors_0, errors_1, etc.)
     (svmlogs, svlogs_se), (svmaccs, svmaccs_se) = compute_score_statistics(svm_scores)
     
@@ -405,6 +407,9 @@ if __name__ == "__main__":
     print(svm_train_scores)
     a, b = svm_train_scores[-2], svm_train_scores[-1]
     print(compute_score_statistics(zip(a,b)))
+    
+    # Create the DataFrame
+    df = pd.DataFrame()
     
     folds = len(errs)
     for i in range(folds):
