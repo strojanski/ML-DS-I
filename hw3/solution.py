@@ -53,8 +53,6 @@ class MultinomialLogReg:
                
         opt_theta, f, d = fmin_l_bfgs_b(self.log_likelihood, initial_guess, args=(X, y), fprime=self.gradient)
         
-        print(f)
-        
         self.opt_theta = opt_theta.reshape((n_feats, self.n_classes))
         
         return self
@@ -95,7 +93,7 @@ class OrdinalLogReg():
     def gradient(self, params, X, y):
         # Get thetas and thresholds
         theta = params[:self.n_feats].reshape((self.n_feats, 1)) # Feature weights
-        thresholds = np.sort(params[self.n_feats:]) # Cutoffs
+        thresholds = np.sort(params[self.n_feats:]) # Cutoffs - must be ordered
         
         # Get probabilities
         logits = X @ theta 
@@ -117,8 +115,9 @@ class OrdinalLogReg():
         self.n_feats = X.shape[1]
         self.n_thresh = len(np.unique(y)) - 1
         
-        initial_guess = np.random.randn(self.n_feats + self.n_thresh)   # Optimize feature thetas & thresholds
-        print(initial_guess.shape)
+        initial_guess_feats = np.random.randn(self.n_feats)
+        initial_guess_thresh = np.sort(np.random.rand(self.n_thresh))
+        initial_guess = np.concatenate([initial_guess_feats, initial_guess_thresh])
 
         opt_params, f, d = fmin_l_bfgs_b(self.log_likelihood, initial_guess, args=(X, y), fprime=self.gradient)
         self.theta = opt_params[:self.n_feats].reshape((self.n_feats, 1))  # Ensure theta is a column vector
@@ -130,6 +129,7 @@ class OrdinalLogReg():
         logits = X @ self.theta
         probs = self.sigmoid_cdf(logits, self.thresh)
         return probs
+
 
 
 
