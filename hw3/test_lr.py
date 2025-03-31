@@ -95,23 +95,15 @@ class MyTests(unittest.TestCase):
         self.assertTrue(all(p == r for p, r in zip(preds, test[1])))
 
     def test_ordinal(self):
-        train = self.X3[::2], self.y3[::2]
-        test = self.X3[1::2], self.y3[1::2]
         
         l = OrdinalLogReg()
-        l = MultinomialLogReg()
-        c = l.build(train[0], train[1])
+        c = l.build(self.X3, self.y3)
         
-        prob = c.predict(test[0])
+        prob = c.predict(self.X3)
         preds = np.argmax(prob, axis=1)
-        # print(preds)
-        # print(test[1])
-        
-        # print(c.theta)
-        # print(c.thresh)
-        
-        
-    #     self.assertTrue(all(p == r for p,r in zip(preds, test[1])))
+
+        print(preds, self.y3)
+        self.assertTrue(all(p == r for p,r in zip(preds, self.y3)))
 
 if __name__ == "__main__":
     unittest.main()
