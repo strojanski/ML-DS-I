@@ -7,6 +7,7 @@ from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
 from collections import Counter
 import seaborn as sns
+from matplotlib.colors import ListedColormap
 
 categorical = ["ShotType", "Competition", "PlayerType", "Movement"]
 eps = 1e-9
@@ -95,12 +96,10 @@ class OrdinalLogReg():
         theta = params[:self.n_feats].reshape((self.n_feats, 1))
         thresholds = np.sort(params[self.n_feats:])
         
-        # Clip logits to prevent overflow in sigmoid
         logits = np.clip(X @ theta, -20, 20)
         probs = self.sigmoid_cdf(logits, thresholds)
         
-        # Numerical stability: avoid log(0) and use log-sum-exp trick
-        log_probs = np.log(probs[np.arange(len(y)), y] + 1e-15)
+        log_probs = np.log(probs[np.arange(len(y)), y] + eps)
         
         return -np.sum(log_probs)
 
@@ -119,9 +118,8 @@ class OrdinalLogReg():
         # Last class: 1 - P(Y ≤ K-1)
         cum_probs[:, -1] = 1 - sigmoid(thresholds[-1] - logits.ravel())
         
-        # Ensure valid probabilities (sum to 1)
         cum_probs = np.clip(cum_probs, eps, 1-eps)
-        return cum_probs / cum_probs.sum(axis=1, keepdims=True)  # Renormalize
+        return cum_probs / cum_probs.sum(axis=1, keepdims=True)  
 
     def gradient(self, params, X, y):
         theta = params[:self.n_feats].reshape((self.n_feats, 1))
@@ -199,19 +197,9 @@ def plot_predicted_probs(model, X, feature_idx, feature_name, class_labels):
     
 
 def plot_coefficients(model, feature_names, thetas_var):
-    """
-    Plots the odds ratios (exp(coefficients)) from a trained multinomial logistic regression model
-    with confidence intervals from bootstrapped variance.
-
-    Args:
-        model: Trained MultinomialLogReg model.
-        feature_names: List of feature names.
-        thetas_var: Bootstrapped variance of the coefficients (shape: n_features × n_classes).
-    """
     theta_means = model.opt_theta  
     theta_std = np.sqrt(thetas_var)  
 
-    # Compute odds ratios for the means and the standard deviation
     odds_ratios = np.exp(theta_means)  
     error_bars_lower = np.exp(theta_means - 1.96 * theta_std)  
     error_bars_upper = np.exp(theta_means + 1.96 * theta_std)  
@@ -225,7 +213,6 @@ def plot_coefficients(model, feature_names, thetas_var):
     plt.figure(figsize=(12, 6))
 
     for class_idx in range(num_classes):
-        # Jitter x positions slightly to prevent overlap
         x_jitter = np.arange(num_features) + np.random.uniform(-0.2, 0.2, size=num_features)
         
         plt.errorbar(
@@ -283,6 +270,7 @@ def permutation_importance(model, X, y, metric):
     importances = sorted(importances, key=lambda x: x[1], reverse=True)
     
     return importances
+ 
     
 def plot_perm_imps(imps):
     feats_ = [i[0] for i in imps]
@@ -329,7 +317,6 @@ def multinomial_bad_ordinal_good(n_samples=1000, n_features=6, n_classes=10, ran
     
     return X, y
 
-from matplotlib.colors import ListedColormap
 
 def plot_decision_boundary(model, X, y):
     h = 0.1
@@ -359,7 +346,6 @@ def plot_coefficient_heatmap(model, feature_names, class_names):
         xticklabels=feature_names,
         yticklabels=class_names
     )
-    # plt.title("Log-Odds Coefficients Heatmap")
     plt.tight_layout()
     plt.show()
     
@@ -367,8 +353,6 @@ def plot_coefficient_heatmap(model, feature_names, class_names):
 if __name__ == "__main__":
     df = pd.read_csv("dataset.csv", sep=";")
     le = LabelEncoder()
-    
-
     
     # Encode labels
     original_feat_names = []
@@ -409,57 +393,57 @@ if __name__ == "__main__":
     plot_decision_boundary(lr.build(X2, y2), X2, y2)
 
     # 10 times repeated 5 fold CV
-    # accs, f1s = [], []
-    # n_rows = len(X) // 10  # use integer division
-    # for _ in range(10):
-    #     Xy = X.copy()
-    #     Xy['label'] = y
-    #     Xy = Xy.sample(frac=1).reset_index(drop=True)
-    #     for i in range(5):
-    #         X_test = Xy.iloc[i*n_rows:(i+1)*n_rows]
-    #         X_train = Xy.drop(X_test.index)
+    accs, f1s = [], []
+    n_rows = len(X) // 10  # use integer division
+    for _ in range(10):
+        Xy = X.copy()
+        Xy['label'] = y
+        Xy = Xy.sample(frac=1).reset_index(drop=True)
+        for i in range(5):
+            X_test = Xy.iloc[i*n_rows:(i+1)*n_rows]
+            X_train = Xy.drop(X_test.index)
 
-    #         y_test = X_test['label']
-    #         X_test = X_test.drop(columns='label')
+            y_test = X_test['label']
+            X_test = X_test.drop(columns='label')
 
-    #         y_train = X_train['label']
-    #         X_train = X_train.drop(columns='label')
+            y_train = X_train['label']
+            X_train = X_train.drop(columns='label')
             
-    #         lr.build(X_train.to_numpy(), y_train.to_numpy())
-    #         preds = lr.predict(X_test.to_numpy())
+            lr.build(X_train.to_numpy(), y_train.to_numpy())
+            preds = lr.predict(X_test.to_numpy())
             
-    #         acc = accuracy_score(y_test.to_numpy(), np.argmax(preds, axis=1))
-    #         f1 = f1_score(y_test.to_numpy(), np.argmax(preds, axis=1), average="macro")
-    #         accs.append(acc)
-    #         f1s.append(f1)
-    #         print(acc, f1)
+            acc = accuracy_score(y_test.to_numpy(), np.argmax(preds, axis=1))
+            f1 = f1_score(y_test.to_numpy(), np.argmax(preds, axis=1), average="macro")
+            accs.append(acc)
+            f1s.append(f1)
+            print(acc, f1)
     
-    # print(np.mean(accs), np.std(accs))
-    # print(np.mean(f1s), np.std(f1s))       
+    print(np.mean(accs), np.std(accs))
+    print(np.mean(f1s), np.std(f1s))       
         
 
-    # lr = lr.build(X_train, y_train)
+    lr = lr.build(X_train, y_train)
     
-    # # Visualizations
-    # preds = lr.predict(X_test)
-    # feats = np.array(["Competition", "PlayerType", "Transition", "TwoLegged", "Movement", "Angle", "Distance"])
+    # Visualizations
+    preds = lr.predict(X_test)
+    feats = np.array(["Competition", "PlayerType", "Transition", "TwoLegged", "Movement", "Angle", "Distance"])
     
-    # # Heatmap
-    # plot_coefficient_heatmap(lr, feature_names=feats, class_names=class_names_orig)
+    # Heatmap
+    plot_coefficient_heatmap(lr, feature_names=feats, class_names=class_names_orig)
 
-    # # Probability vs. feature values
-    # plot_predicted_probs(lr, X.to_numpy(), feature_idx=-1, feature_name="Distance", class_labels=original_feat_names[0])
+    # Probability vs. feature values
+    plot_predicted_probs(lr, X.to_numpy(), feature_idx=-1, feature_name="Distance", class_labels=original_feat_names[0])
     
-    # # Odds ratio vs features vs classes
-    # thetas_var = bootstrap_thetas(lr, X.to_numpy(), y.to_numpy(), n_bootstrap=100)
-    # plot_coefficients(lr, feats, thetas_var)
+    # Odds ratio vs features vs classes
+    thetas_var = bootstrap_thetas(lr, X.to_numpy(), y.to_numpy(), n_bootstrap=100)
+    plot_coefficients(lr, feats, thetas_var)
     
-    # # Permutation based importances
-    # imps = permutation_importance(lr, X_test, y_test, accuracy_score)
-    # plot_perm_imps(imps)
+    # Permutation based importances
+    imps = permutation_importance(lr, X_test, y_test, accuracy_score)
+    plot_perm_imps(imps)
     
-    # preds = np.argmax(preds, axis=1)
-    # print(classification_report(y_test, preds, zero_division=0.0))
+    preds = np.argmax(preds, axis=1)
+    print(classification_report(y_test, preds, zero_division=0.0))
 
 
     accsl, accso = [], []
