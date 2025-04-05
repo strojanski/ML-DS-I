@@ -332,6 +332,7 @@ def plot_decision_boundary(model, X, y):
     plt.contourf(xx, yy, Z, cmap=cmap, alpha=0.5)
     plt.scatter(X[:, 0], X[:, 1], c=y, edgecolor='k', cmap='bwr')
     plt.show()
+
     
 def plot_coefficient_heatmap(model, feature_names, class_names):
     theta_means = model.opt_theta
