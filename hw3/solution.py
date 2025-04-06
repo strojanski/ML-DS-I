@@ -1,7 +1,7 @@
 import numpy as np
 from scipy.optimize import fmin_l_bfgs_b
 import pandas as pd
-from sklearn.preprocessing import LabelEncoder, MinMaxScaler
+from sklearn.preprocessing import LabelEncoder, MinMaxScaler, OneHotEncoder
 from sklearn.metrics import accuracy_score, classification_report, f1_score
 from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
@@ -9,7 +9,7 @@ from collections import Counter
 import seaborn as sns
 from matplotlib.colors import ListedColormap
 
-categorical = ["ShotType", "Competition", "PlayerType", "Movement"]
+categorical = ["Competition", "PlayerType", "Movement"]
 eps = 1e-9
 np.random.seed(1)
 class_names_orig = []
@@ -276,7 +276,7 @@ def plot_perm_imps(imps):
     feats_ = [i[0] for i in imps]
     imps_ = [i[1] for i in imps]
     
-    plt.bar(feats[feats_], imps_)
+    plt.bar(np.array(feats)[feats_], imps_)
     plt.xticks(rotation=30)
     plt.ylabel("Importance", fontsize=14)
     plt.xlabel("Feature name", fontsize=14)
@@ -354,14 +354,19 @@ def plot_coefficient_heatmap(model, feature_names, class_names):
 if __name__ == "__main__":
     df = pd.read_csv("dataset.csv", sep=";")
     le = LabelEncoder()
+    ohe = OneHotEncoder(sparse_output=False, handle_unknown="ignore")
     
+    encoded = ohe.fit_transform(df[categorical])
+    feats = ohe.get_feature_names_out(categorical)
+    
+    df_encoded = pd.DataFrame(encoded, columns=feats, index=df.index)
+    df = pd.concat([df.drop(columns=categorical), df_encoded], axis=1)
+    
+    print(df.head())
+    feats = [c for c in df.columns if c != "ShotType"]
     # Encode labels
-    original_feat_names = []
-    for col in categorical:
-        df[col] = le.fit_transform(df[col])
-        print(le.classes_)
-        original_feat_names.append(le.classes_)
-    class_names_orig = original_feat_names[0]
+    df["ShotType"] = le.fit_transform(df["ShotType"])
+    class_names_orig = le.classes_
     
     # Get data
     X, y = df.drop(columns=["ShotType"]), df["ShotType"] 
@@ -394,46 +399,52 @@ if __name__ == "__main__":
     plot_decision_boundary(lr.build(X2, y2), X2, y2)
 
     # 10 times repeated 5 fold CV
-    accs, f1s = [], []
-    n_rows = len(X) // 10  # use integer division
-    for _ in range(10):
-        Xy = X.copy()
-        Xy['label'] = y
-        Xy = Xy.sample(frac=1).reset_index(drop=True)
-        for i in range(5):
-            X_test = Xy.iloc[i*n_rows:(i+1)*n_rows]
-            X_train = Xy.drop(X_test.index)
+    # accs, f1s = [], []
+    # n_rows = len(X) // 10  # use integer division
+    # for _ in range(10):
+    #     Xy = X.copy()
+    #     Xy['ShotType'] = y
+    #     Xy = Xy.sample(frac=1).reset_index(drop=True)
+    #     for i in range(5):
+    #         X_test = Xy.iloc[i*n_rows:(i+1)*n_rows]
+    #         X_train = Xy.drop(X_test.index)
 
-            y_test = X_test['label']
-            X_test = X_test.drop(columns='label')
+    #         y_test = X_test['ShotType']
+    #         X_test = X_test.drop(columns='ShotType')
 
-            y_train = X_train['label']
-            X_train = X_train.drop(columns='label')
+    #         y_train = X_train['ShotType']
+    #         X_train = X_train.drop(columns='ShotType')
             
-            lr.build(X_train.to_numpy(), y_train.to_numpy())
-            preds = lr.predict(X_test.to_numpy())
+    #         lr.build(X_train.to_numpy(), y_train.to_numpy())
+    #         preds = lr.predict(X_test.to_numpy())
             
-            acc = accuracy_score(y_test.to_numpy(), np.argmax(preds, axis=1))
-            f1 = f1_score(y_test.to_numpy(), np.argmax(preds, axis=1), average="macro")
-            accs.append(acc)
-            f1s.append(f1)
-            print(acc, f1)
+    #         acc = accuracy_score(y_test.to_numpy(), np.argmax(preds, axis=1))
+    #         f1 = f1_score(y_test.to_numpy(), np.argmax(preds, axis=1), average="macro")
+    #         accs.append(acc)
+    #         f1s.append(f1)
+    #         print(acc, f1)
     
-    print(np.mean(accs), np.std(accs))
-    print(np.mean(f1s), np.std(f1s))       
+    # print(np.mean(accs), np.std(accs))
+    # print(np.mean(f1s), np.std(f1s))  
+    
         
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=.2, stratify=y)
+    
+    X_train, y_train = X_train.to_numpy(), y_train.to_numpy()
+    X_test, y_test = X_test.to_numpy(), y_test.to_numpy()
+    y_train = y_train.astype(int)
+    y_test = y_test.astype(int)
 
     lr = lr.build(X_train, y_train)
     
     # Visualizations
     preds = lr.predict(X_test)
-    feats = np.array(["Competition", "PlayerType", "Transition", "TwoLegged", "Movement", "Angle", "Distance"])
     
     # Heatmap
     plot_coefficient_heatmap(lr, feature_names=feats, class_names=class_names_orig)
 
     # Probability vs. feature values
-    plot_predicted_probs(lr, X.to_numpy(), feature_idx=-1, feature_name="Distance", class_labels=original_feat_names[0])
+    plot_predicted_probs(lr, X.to_numpy(), feature_idx=3, feature_name="Distance", class_labels=class_names_orig)
     
     # Odds ratio vs features vs classes
     thetas_var = bootstrap_thetas(lr, X.to_numpy(), y.to_numpy(), n_bootstrap=100)
