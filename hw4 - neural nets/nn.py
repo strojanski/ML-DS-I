@@ -2,12 +2,14 @@ import numpy as np
 import csv
 
 class Layer:
-    def __init__(self, input_dim, output_dim):
+    def __init__(self, input_dim, output_dim, lambda_):
         self.input_dim = input_dim # of features (from prev layer)
         self.output_dim = output_dim  # of neurons
-        self.weights = np.random.randn(input_dim, output_dim) * np.sqrt(1. / (input_dim)) # Xavier
+        self.weights = np.random.randn(input_dim, output_dim) * np.sqrt(1. / (input_dim))*2 # Xavier
         self.biases = np.ones((1, output_dim))
-
+        self.lambda_=  lambda_
+        self.reg_bias = np.random.rand() > 0.7
+        
     def forward(self, X):
         self.X = X
         self.output = np.dot(X, self.weights) + self.biases
@@ -16,7 +18,14 @@ class Layer:
     def backward(self, d_inputs):
         self.dweights = np.dot(self.X.T, d_inputs)
         self.dbiases = np.sum(d_inputs, axis=0, keepdims=True)
+        
+        self.dweights += 2 * self.lambda_ * self.weights
+        
+        if self.reg_bias:
+            self.dbiases += 2 * self.lambda_ * self.biases
+        
         self.dX = np.dot(d_inputs, self.weights.T)
+        
         return self.dX
     
 class Softmax:
@@ -32,6 +41,20 @@ class Softmax:
         self.probs = probs
         return probs
     
+    
+class Loss:
+    def __init__(self, lambda_):
+        self.lambda_ = lambda_
+        
+    def regularize_bias(self, layer: Layer):
+        if not layer.reg_bias:
+            return 0
+        return self.lambda_ * np.sum(layer.biases**2)
+    
+    def regularize_weights(self, layer: Layer):
+        return self.lambda_ * np.sum(layer.weights**2)
+    
+        
 
 class Sigmoid_Activation:
     """Sigmoid activation function, used in between hidden layers"""
@@ -70,8 +93,11 @@ class LeakyReLU_Activation:
         self.d_out = d_out * np.where(self.input > 0, 1, 0.01) 
         return self.d_out
     
-class CategoricalCrossEntropyLoss:
+class CategoricalCrossEntropyLoss(Loss):
     """Categorical Cross-Entropy loss function, as the loss function (global)"""
+    def __init__(self, lambda_):
+        super().__init__(lambda_)
+        
     def forward(self, y_pred, y_true):
         """y_pred = softmax output, y_true = labels, need to one-hot encoded (done in this funciton)"""
         n_samples = len(y_true)
@@ -89,9 +115,9 @@ class CategoricalCrossEntropyLoss:
     
 
 class Softmax_CrossEntropyLoss:
-    def __init__(self):
+    def __init__(self, lambda_):
         self.activation = Softmax()
-        self.loss = CategoricalCrossEntropyLoss()
+        self.loss = CategoricalCrossEntropyLoss(lambda_)
         
     def forward(self, logits, y_true):
         self.probs = self.activation.forward(logits)
@@ -121,7 +147,11 @@ class Linear_Activation:
         return self.dinputs
         
         
-class MeanSquaredErrorLoss:
+class MeanSquaredErrorLoss(Loss):
+    def __init__(self, lambda_):
+        super().__init__(lambda_)
+    
+    
     def forward(self, y_pred, y_true):
         return np.mean((y_pred - y_true) ** 2)
     
@@ -138,8 +168,6 @@ class SGD_Optimizer:
 
         layer.weights -= self.lr * layer.dweights
         layer.biases -= self.lr * layer.dbiases
-        # print(np.mean(layer.weights), np.mean(layer.biases))
-        # print(np.mean(layer.dweights), np.mean(layer.dbiases))
         return layer
 
 
@@ -168,24 +196,40 @@ def squares():
 class ANNClassification:
     def __init__(self, units, lambda_=0, n_iter=10000, verbose=False):
         self.units = units
+        self.lambda_ = lambda_
         self.softmax = Softmax()
-        self.loss = CategoricalCrossEntropyLoss()
-        self.softmax_cce = Softmax_CrossEntropyLoss()
-        self.optimizer = SGD_Optimizer(lr=.001)
+        self.loss = CategoricalCrossEntropyLoss(self.lambda_)
+        self.softmax_cce = Softmax_CrossEntropyLoss(self.lambda_)
+        self.optimizer = SGD_Optimizer(lr=1)
         self.layers = []
         self.n_iter = n_iter
-        self.lambda_ = lambda_
         self.verbose = verbose
+        
+    def regularization_loss(self):
+        loss = 0
+        
+        for layer in self.layers:
+            wloss = self.loss.regularize_weights(layer)
+            bloss = self.loss.regularize_bias(layer)
+            loss = loss + wloss + bloss
+            
+        return loss
+        
         
     def fit(self, X, y):
         self.build(X, y)
         
         for i in range(self.n_iter):
             # Decay
-            self.optimizer.lr = 1 * 0.99**i
+            if i % 1000 == 0:
+                self.optimizer.lr *= 0.999
             
             logits = self.forward_pass(X)
+            
+            rloss = self.regularization_loss()
+            
             probs, loss = self.softmax_cce.forward(logits, y)
+            loss += rloss
             
             preds = np.argmax(probs, axis=1)
             acc = np.mean(preds == y)
@@ -211,7 +255,7 @@ class ANNClassification:
         print(self.units)
 
         for i in range(len(self.units) - 1):
-            self.layers.append(Layer(self.units[i], self.units[i + 1]))
+            self.layers.append(Layer(self.units[i], self.units[i + 1], self.lambda_))
 
         self.activations = [Sigmoid_Activation() for _ in range(len(self.units) - 2)]
 
@@ -250,9 +294,10 @@ class ANNClassification:
 
 
 class ANNRegression(ANNClassification):
-    def __init__(self, units, lambda_=0, n_iter=100000, verbose=False):
+    def __init__(self, units, lambda_=0, n_iter=10000, verbose=True):
         super().__init__(units, lambda_, n_iter, verbose)
-        self.loss = MeanSquaredErrorLoss()
+        self.lambda_ = lambda_
+        self.loss = MeanSquaredErrorLoss(self.lambda_)
         self.optimizer = SGD_Optimizer(lr=1)
         
     def fit(self, X, y):
@@ -261,17 +306,24 @@ class ANNRegression(ANNClassification):
             
         self.build(X, y)
         
+        running_mean_loss = []
+        
         for i in range(self.n_iter):
             # Update optimizer's learning rate with decay
-            if i % 1000 == 0:
-                self.optimizer.lr = np.maximum(1 * 0.999**i, 1e-7)
-                print(self.optimizer.lr)
+            if i % 200 == 0:
+                self.optimizer.lr = np.maximum(1 * 0.99**i, 1e-4)
+                # print(self.optimizer.lr)
             
             logits = self.forward_pass(X)
-            loss = self.loss.forward(logits, y)
+
+            rloss = super().regularization_loss()
+
+            loss = self.loss.forward(logits, y) + rloss
+            running_mean_loss.append(loss)
+            
             
             if i % 100 == 0: 
-                if np.mean(loss) < 0.01:
+                if np.mean(loss) < 0.1:
                     print(f"Converged after {i} iterations")
                     break
                 if self.verbose:
@@ -290,7 +342,7 @@ class ANNRegression(ANNClassification):
         self.units = [X.shape[1]] + self.units + [1]
         self.layers = []
         for i in range(len(self.units) - 1):
-            self.layers.append(Layer(self.units[i], self.units[i + 1]))
+            self.layers.append(Layer(self.units[i], self.units[i + 1], self.lambda_))
             
         self.activations = [LeakyReLU_Activation() for _ in range(len(self.units) - 2)]
             
@@ -317,20 +369,21 @@ class ANNRegression(ANNClassification):
         for layer in self.layers:
             self.optimizer.update(layer)     
         
+    def predict(self, X):
+        return self.forward_pass(X).flatten()
     
 
 if __name__ == "__main__":
 
-    # fitter = ANNClassification(units=[3], lambda_=0., verbose=True)
-    fitter = ANNRegression(units=[10,10,10], lambda_=0., verbose=True)
+    fitter = ANNClassification(units=[5,5,5], lambda_=0., verbose=True)
+    # fitter = ANNRegression(units=[10,10,10], lambda_=.1, verbose=True)
     X, y = squares()
 
     # Create X with values from 1 to 10 with a step of 0.01
-    X = np.arange(1, 10, 0.01).reshape(-1, 1)
+    # X = np.arange(1, 10, 0.01).reshape(-1, 1)
 
     # Create y as the sine of each value in X
-    y = np.cos(X).reshape(-1, 1)
-
+    # y = np.cos(X).reshape(-1, 1)
     
     fitter.fit(X, y)
     # X, y = doughnut()
