@@ -353,6 +353,10 @@ def plot_coefficient_heatmap(model, feature_names, class_names):
     
 if __name__ == "__main__":
     df = pd.read_csv("dataset.csv", sep=";")
+    
+    # Comments:
+    #   When one-hot encoding multiple variables, you need to drop one of the columns, or you create correlation
+    #   Instead of thresholds, optimize deltas
     le = LabelEncoder()
     ohe = OneHotEncoder(sparse_output=False, handle_unknown="ignore")
     
