@@ -5,7 +5,7 @@ class Layer:
     def __init__(self, input_dim, output_dim, lambda_):
         self.input_dim = input_dim # of features (from prev layer)
         self.output_dim = output_dim  # of neurons
-        self.weights = np.random.randn(input_dim, output_dim) * np.sqrt(1. / (input_dim))*2 # Xavier
+        self.weights = np.random.randn(input_dim, output_dim) * np.sqrt(1. / (input_dim)) # Xavier
         self.biases = np.ones((1, output_dim))
         self.lambda_=  lambda_
         self.reg_bias = np.random.rand() > 0.7
@@ -161,13 +161,11 @@ class MeanSquaredErrorLoss(Loss):
 class SGD_Optimizer:
     def __init__(self, lr=0.01):
         self.lr = lr
-        self.decay = .999
+        self.decay = .9999
         self.iter = 0
         
     def update_lr(self):
-        print(self.lr)
-        self.lr *= 1 * self.decay ** self.iter
-        print(self.lr)
+        self.lr *=  self.decay
         
     def update(self, layer):
         np.clip(layer.dweights, -1, 1, out=layer.dweights)
@@ -231,9 +229,7 @@ class ANNClassification:
         
         for i in range(self.n_iter):
             # Decay
-            if i % 1000 == 0:
-                self.optimizer.lr *= 0.999
-            
+            self.optimizer.update_lr()              
             logits = self.forward_pass(X)
             
             rloss = self.regularization_loss()
@@ -244,16 +240,20 @@ class ANNClassification:
             preds = np.argmax(probs, axis=1)
             acc = np.mean(preds == y)
             if i % 100 == 0: 
-                if acc == 1 and loss < 0.01:
+                if acc == 1 and loss < 0.001:
                     print("Converged after ", i, "iterations")
                     break
                 
                 if self.verbose:
                     print(f"Accuracy: {acc:.4f}")
                     print(f"Loss: {loss:.4f}")
+                    print(self.optimizer.lr)
                     
             
             self.backward_pass(y)
+            
+            if i % 1000 == 0:
+                self.optimizer.update_iter()
             
         print(f"Accuracy: {acc:.4f}")
         print(f"Loss: {loss:.4f}")
@@ -304,11 +304,11 @@ class ANNClassification:
 
 
 class ANNRegression(ANNClassification):
-    def __init__(self, units, lambda_=0, n_iter=10000, verbose=True):
+    def __init__(self, units, lambda_=0, n_iter=10000, verbose=False):
         super().__init__(units, lambda_, n_iter, verbose)
         self.lambda_ = lambda_
         self.loss = MeanSquaredErrorLoss(self.lambda_)
-        self.optimizer = SGD_Optimizer(lr=1)
+        self.optimizer = SGD_Optimizer(lr=.1)
         
     def weights(self):
         weights = []
@@ -339,7 +339,7 @@ class ANNRegression(ANNClassification):
             
             
             if i % 1000 == 0: 
-                if np.mean(loss) < 0.001:
+                if np.mean(loss) < 0.0001:
                     print(f"Converged after {i} iterations")
                     break
                 if self.verbose:
@@ -353,7 +353,7 @@ class ANNRegression(ANNClassification):
             #     print("dWeights std:", np.std(layer.dweights))
             #     print("dBiases std:", np.std(layer.dbiases))
             
-            if i % 1000 == 0:
+            if i % 100 == 0:
                 self.optimizer.update_iter()
         return self
             
@@ -363,7 +363,7 @@ class ANNRegression(ANNClassification):
         for i in range(len(self.units) - 1):
             self.layers.append(Layer(self.units[i], self.units[i + 1], self.lambda_))
             
-        self.activations = [LeakyReLU_Activation() for _ in range(len(self.units) - 2)]
+        self.activations = [ReLU_Activation() for _ in range(len(self.units) - 2)]
             
     def forward_pass(self, X):
         inp = X

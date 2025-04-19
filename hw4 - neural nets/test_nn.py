@@ -14,36 +14,36 @@ class NNTests(unittest.TestCase):
         self.y = np.array([0, 1, 2, 3])
         self.hard_y = np.array([0, 1, 1, 0])
 
-    # def test_ann_classification_no_hidden_layer(self):
-    #     fitter = ANNClassification(units=[], lambda_=0.)
-    #     m = fitter.fit(self.X, self.y)
-    #     pred = m.predict(self.X)
-    #     self.assertEqual(pred.shape, (4, 4))
-    #     np.testing.assert_allclose(pred, np.identity(4), atol=0.01)
+    def test_ann_classification_no_hidden_layer(self):
+        fitter = ANNClassification(units=[], lambda_=0.)
+        m = fitter.fit(self.X, self.y)
+        pred = m.predict(self.X)
+        self.assertEqual(pred.shape, (4, 4))
+        np.testing.assert_allclose(pred, np.identity(4), atol=0.01)
 
-    # def test_ann_classification_no_hidden_layer_hard(self):
-    #     # aiming to solve a non-linear problem without hidden layers
-    #     fitter = ANNClassification(units=[], lambda_=0.)
-    #     m = fitter.fit(self.X, self.hard_y)
-    #     pred = m.predict(self.X)
-    #     self.assertEqual(pred.shape, (4, 2))
-    #     np.testing.assert_allclose(pred, 0.5, atol=0.01)
+    def test_ann_classification_no_hidden_layer_hard(self):
+        # aiming to solve a non-linear problem without hidden layers
+        fitter = ANNClassification(units=[], lambda_=0.)
+        m = fitter.fit(self.X, self.hard_y)
+        pred = m.predict(self.X)
+        self.assertEqual(pred.shape, (4, 2))
+        np.testing.assert_allclose(pred, 0.5, atol=0.01)
 
-    # def test_ann_classification_hidden_layer_hard(self):
-    #     # with hidden layers we can solve a non-linear problem
-    #     fitter = ANNClassification(units=[10], lambda_=0.)
-    #     m = fitter.fit(self.X, self.hard_y)
-    #     pred = m.predict(self.X)
-    #     self.assertEqual(pred.shape, (4, 2))
-    #     np.testing.assert_allclose(pred, [[1, 0], [0, 1], [0, 1], [1, 0]], atol=0.01)
+    def test_ann_classification_hidden_layer_hard(self):
+        # with hidden layers we can solve a non-linear problem
+        fitter = ANNClassification(units=[10], lambda_=0.)
+        m = fitter.fit(self.X, self.hard_y)
+        pred = m.predict(self.X)
+        self.assertEqual(pred.shape, (4, 2))
+        np.testing.assert_allclose(pred, [[1, 0], [0, 1], [0, 1], [1, 0]], atol=0.01)
 
-    # def test_ann_classification_hidden_layers_hard(self):
-    #     # two hidden layers
-    #     fitter = ANNClassification(units=[10, 11], lambda_=0.)
-    #     m = fitter.fit(self.X, self.hard_y)
-    #     pred = m.predict(self.X)
-    #     self.assertEqual(pred.shape, (4, 2))
-    #     np.testing.assert_allclose(pred, [[1, 0], [0, 1], [0, 1], [1, 0]], atol=0.01)
+    def test_ann_classification_hidden_layers_hard(self):
+        # two hidden layers
+        fitter = ANNClassification(units=[10, 11], lambda_=0.)
+        m = fitter.fit(self.X, self.hard_y)
+        pred = m.predict(self.X)
+        self.assertEqual(pred.shape, (4, 2))
+        np.testing.assert_allclose(pred, [[1, 0], [0, 1], [0, 1], [1, 0]], atol=0.01)
 
     def test_ann_regression_no_hidden_layer(self):
         fitter = ANNRegression(units=[], lambda_=0.)
