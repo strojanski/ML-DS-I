@@ -161,6 +161,13 @@ class MeanSquaredErrorLoss(Loss):
 class SGD_Optimizer:
     def __init__(self, lr=0.01):
         self.lr = lr
+        self.decay = .999
+        self.iter = 0
+        
+    def update_lr(self):
+        print(self.lr)
+        self.lr *= 1 * self.decay ** self.iter
+        print(self.lr)
         
     def update(self, layer):
         np.clip(layer.dweights, -1, 1, out=layer.dweights)
@@ -169,6 +176,9 @@ class SGD_Optimizer:
         layer.weights -= self.lr * layer.dweights
         layer.biases -= self.lr * layer.dbiases
         return layer
+    
+    def update_iter(self):
+        self.iter += 1
 
 
 def read_tab(fn, adict):
@@ -300,19 +310,25 @@ class ANNRegression(ANNClassification):
         self.loss = MeanSquaredErrorLoss(self.lambda_)
         self.optimizer = SGD_Optimizer(lr=1)
         
+    def weights(self):
+        weights = []
+        for layer in self.layers:
+            print(layer.weights.shape, layer.biases.shape)
+            weights.append(np.vstack([layer.weights, layer.biases]))
+            
+        return weights
+        
     def fit(self, X, y):
         if y.ndim == 1:
             y = y.reshape(-1, 1)
             
         self.build(X, y)
         
+        
         running_mean_loss = []
         
         for i in range(self.n_iter):
-            # Update optimizer's learning rate with decay
-            if i % 200 == 0:
-                self.optimizer.lr = np.maximum(1 * 0.99**i, 1e-4)
-                # print(self.optimizer.lr)
+            self.optimizer.update_lr()
             
             logits = self.forward_pass(X)
 
@@ -322,12 +338,13 @@ class ANNRegression(ANNClassification):
             running_mean_loss.append(loss)
             
             
-            if i % 100 == 0: 
-                if np.mean(loss) < 0.1:
+            if i % 1000 == 0: 
+                if np.mean(loss) < 0.001:
                     print(f"Converged after {i} iterations")
                     break
                 if self.verbose:
                     print(f"Loss: {np.mean(loss):.4f}")
+                    print(self.optimizer.lr)
                     
             self.backward_pass(y, logits)
             # for layer in self.layers:
@@ -335,7 +352,9 @@ class ANNRegression(ANNClassification):
             #     print("Biases std:", np.std(layer.biases))
             #     print("dWeights std:", np.std(layer.dweights))
             #     print("dBiases std:", np.std(layer.dbiases))
-
+            
+            if i % 1000 == 0:
+                self.optimizer.update_iter()
         return self
             
     def build(self, X, y):
