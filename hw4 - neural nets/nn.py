@@ -202,10 +202,11 @@ def squares():
 
 
 class ANNClassification:
-    def __init__(self, units, lambda_=0, n_iter=10000, verbose=False):
+    def __init__(self, units, lambda_=0, n_iter=10000, verbose=False, activations=[]):
         self.units = units
         self.lambda_ = lambda_
         self.softmax = Softmax()
+        self.activations = activations
         self.loss = CategoricalCrossEntropyLoss(self.lambda_)
         self.softmax_cce = Softmax_CrossEntropyLoss(self.lambda_)
         self.optimizer = SGD_Optimizer(lr=1)
@@ -252,7 +253,7 @@ class ANNClassification:
             
             self.backward_pass(y)
             
-            if i % 1000 == 0:
+            if i % 100 == 0:
                 self.optimizer.update_iter()
             
         print(f"Accuracy: {acc:.4f}")
@@ -267,8 +268,8 @@ class ANNClassification:
         for i in range(len(self.units) - 1):
             self.layers.append(Layer(self.units[i], self.units[i + 1], self.lambda_))
 
-        self.activations = [Sigmoid_Activation() for _ in range(len(self.units) - 2)]
-
+        if len(self.activations) == 0:
+            self.activations = [Sigmoid_Activation() for _ in range(len(self.units) - 2)]
         
     def forward_pass(self, X):
         inp = X
@@ -304,8 +305,8 @@ class ANNClassification:
 
 
 class ANNRegression(ANNClassification):
-    def __init__(self, units, lambda_=0, n_iter=10000, verbose=False):
-        super().__init__(units, lambda_, n_iter, verbose)
+    def __init__(self, units, lambda_=0, n_iter=10000, verbose=False, activations=[]):
+        super().__init__(units, lambda_, n_iter, verbose, activations)
         self.lambda_ = lambda_
         self.loss = MeanSquaredErrorLoss(self.lambda_)
         self.optimizer = SGD_Optimizer(lr=.1)
@@ -313,7 +314,6 @@ class ANNRegression(ANNClassification):
     def weights(self):
         weights = []
         for layer in self.layers:
-            print(layer.weights.shape, layer.biases.shape)
             weights.append(np.vstack([layer.weights, layer.biases]))
             
         return weights
@@ -363,7 +363,8 @@ class ANNRegression(ANNClassification):
         for i in range(len(self.units) - 1):
             self.layers.append(Layer(self.units[i], self.units[i + 1], self.lambda_))
             
-        self.activations = [ReLU_Activation() for _ in range(len(self.units) - 2)]
+        if len(self.activations) == 0:
+            self.activations = [ReLU_Activation() for _ in range(len(self.units) - 2)]
             
     def forward_pass(self, X):
         inp = X
@@ -394,7 +395,7 @@ class ANNRegression(ANNClassification):
 
 if __name__ == "__main__":
 
-    fitter = ANNClassification(units=[5,5,5], lambda_=0., verbose=True)
+    fitter = ANNClassification(units=[5,5,5], lambda_=0., verbose=True, activations=[ReLU_Activation(), Sigmoid_Activation(), ReLU_Activation()])
     # fitter = ANNRegression(units=[10,10,10], lambda_=.1, verbose=True)
     X, y = squares()
 
