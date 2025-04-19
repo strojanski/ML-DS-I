@@ -159,9 +159,9 @@ class MeanSquaredErrorLoss(Loss):
         return 2 * (y_pred - y_true) / y_pred.shape[0]
     
 class SGD_Optimizer:
-    def __init__(self, lr=0.01):
+    def __init__(self, lr=0.01, decay=.9999):
         self.lr = lr
-        self.decay = .9999
+        self.decay = decay
         self.iter = 0
         
     def update_lr(self):
@@ -202,14 +202,14 @@ def squares():
 
 
 class ANNClassification:
-    def __init__(self, units, lambda_=0, n_iter=10000, verbose=False, activations=[]):
+    def __init__(self, units, lambda_=0, n_iter=10000, verbose=False, activations=[], decay=0.99):
         self.units = units
         self.lambda_ = lambda_
         self.softmax = Softmax()
         self.activations = activations
         self.loss = CategoricalCrossEntropyLoss(self.lambda_)
         self.softmax_cce = Softmax_CrossEntropyLoss(self.lambda_)
-        self.optimizer = SGD_Optimizer(lr=1)
+        self.optimizer = SGD_Optimizer(lr=1, decay=decay)
         self.layers = []
         self.n_iter = n_iter
         self.verbose = verbose
@@ -246,9 +246,11 @@ class ANNClassification:
                     break
                 
                 if self.verbose:
+                    print(f"Iteration: {i}")
                     print(f"Accuracy: {acc:.4f}")
                     print(f"Loss: {loss:.4f}")
                     print(self.optimizer.lr)
+                    print()
                     
             
             self.backward_pass(y)
