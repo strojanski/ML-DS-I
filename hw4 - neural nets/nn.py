@@ -1,18 +1,21 @@
 import numpy as np
 import csv
 
+np.random.seed(42)
+
 class Layer:
-    def __init__(self, input_dim, output_dim, lambda_):
-        self.input_dim = input_dim # of features (from prev layer)
-        self.output_dim = output_dim  # of neurons
-        self.weights = np.random.randn(input_dim, output_dim) * np.sqrt(1. / (input_dim)) # Xavier
+    def __init__(self, input_dim, output_dim, lambda_, relu=False):
+        self.input_dim = input_dim
+        self.output_dim = output_dim  
+        coef = 1 if not relu else 2
+        self.weights = np.random.randn(input_dim, output_dim) * np.sqrt(coef / (input_dim)) # Xavier
         self.biases = np.ones((1, output_dim))
         self.lambda_=  lambda_
-        self.reg_bias = np.random.rand() > 0.7
+        self.reg_bias = np.random.rand() > 0.7  # If we want to regualrize biases
         
     def forward(self, X):
         self.X = X
-        self.output = np.dot(X, self.weights) + self.biases
+        self.output = np.dot(X, self.weights) + self.biases     # XW + b
         return self.output
     
     def backward(self, d_inputs):
@@ -21,6 +24,7 @@ class Layer:
         
         self.dweights += 2 * self.lambda_ * self.weights
         
+        # Don't regularize bias
         # if self.reg_bias:
             # self.dbiases += 2 * self.lambda_ * self.biases
         
@@ -36,13 +40,13 @@ class Softmax:
         self.inputs = inputs 
         
         exp_inputs = np.exp(inputs - np.max(inputs, axis=1, keepdims=True))
-        probs = exp_inputs / np.sum(exp_inputs, axis=1, keepdims=True)
+        self.probs = exp_inputs / np.sum(exp_inputs, axis=1, keepdims=True)
         
-        self.probs = probs
-        return probs
+        return self.probs
     
     
 class Loss:
+    """Here just so we can inherit regularization"""
     def __init__(self, lambda_):
         self.lambda_ = lambda_
         
@@ -54,7 +58,6 @@ class Loss:
     def regularize_weights(self, layer: Layer):
         return self.lambda_ * np.sum(layer.weights**2)
     
-        
 
 class Sigmoid_Activation:
     """Sigmoid activation function, used in between hidden layers"""
@@ -168,8 +171,6 @@ class SGD_Optimizer:
         self.lr *=  self.decay
         
     def update(self, layer):
-        # np.clip(layer.dweights, -1, 1, out=layer.dweights)
-        # np.clip(layer.dbiases, -1, 1, out=layer.dbiases)
 
         layer.weights -= self.lr * layer.dweights
         layer.biases -= self.lr * layer.dbiases
@@ -202,14 +203,17 @@ def squares():
 
 
 class ANNClassification:
-    def __init__(self, units, lambda_=0, n_iter=10000, verbose=False, activations=[], decay=0.9999):
+    def __init__(self, units, lambda_=0, n_iter=10000, verbose=False, activations=[], decay=0.9999, lr=1):
+        np.random.seed(42)
+        self.losses = []
+        self.accuracies = []
         self.units = units
         self.lambda_ = lambda_
         self.softmax = Softmax()
         self.activations = activations
         self.loss = CategoricalCrossEntropyLoss(self.lambda_)
         self.softmax_cce = Softmax_CrossEntropyLoss(self.lambda_)
-        self.optimizer = SGD_Optimizer(lr=1, decay=decay)
+        self.optimizer = SGD_Optimizer(lr=lr, decay=decay)
         self.layers = []
         self.n_iter = n_iter
         self.verbose = verbose
@@ -242,6 +246,8 @@ class ANNClassification:
             loss += rloss
             
             preds = np.argmax(probs, axis=1)
+            self.losses.append(loss)
+            self.accuracies.append(np.mean(preds == y))
             acc = np.mean(preds == y)
             if i % 100 == 0: 
                 if acc == 1 and loss < 0.001:
@@ -252,15 +258,14 @@ class ANNClassification:
                     print(f"Iteration: {i}")
                     print(f"Accuracy: {acc:.4f}")
                     print(f"Loss: {loss:.4f}")
-                    print(self.optimizer.lr)
                     print()
                     
             self.backward_pass(y)
             
-            if self.gradient_check:
+            if self.gradient_check and i == 0:
                 self.check_gradients(X, y, self.epsilon)
-            
-            self.update_parameters()
+                
+            self.update_parameters()   
             
             if i % 100 == 0:
                 self.optimizer.update_iter()
@@ -316,10 +321,6 @@ class ANNClassification:
         # return np.eye(len(set(predictions)))[predictions] 
 
     def check_gradients(self, X, y, epsilon=1e-5):
-        print("Checking gradients...")
-        logits = self.forward_pass(X)
-        self.backward_pass(y)
-
         np.save_dir = "./" 
 
         for idx, layer in enumerate(self.layers):
@@ -330,16 +331,17 @@ class ANNClassification:
                 
                 approx_grad = np.zeros_like(param)
 
-                it = np.nditer(param, flags=['multi_index'], op_flags=['readwrite'])
+                # Iterate over weights/biases
+                it = np.nditer(param, flags=['multi_index'], op_flags=['readwrite'])    
                 while not it.finished:
                     ix = it.multi_index
                     original_value = param[ix]
 
                     param[ix] = original_value + epsilon
-                    plus_loss = self.softmax_cce.forward(self.forward_pass(X), y)[1] 
+                    _, plus_loss = self.softmax_cce.forward(self.forward_pass(X), y)
 
                     param[ix] = original_value - epsilon
-                    minus_loss = self.softmax_cce.forward(self.forward_pass(X), y)[1] 
+                    _, minus_loss = self.softmax_cce.forward(self.forward_pass(X), y)
 
                     param[ix] = original_value
                     approx_grad[ix] = (plus_loss - minus_loss) / (2 * epsilon)
@@ -351,17 +353,17 @@ class ANNClassification:
 
                 print(f"Layer {idx} {param_name} max relative error: {max_error:.2e}")
 
-                np.save(f"{np.save_dir}layer{idx}_{param_name}_grad.npy", grad)
-                np.save(f"{np.save_dir}layer{idx}_{param_name}_approx_grad.npy", approx_grad)
+                # np.save(f"{np.save_dir}layer{idx}_{param_name}_grad.npy", grad)
+                # np.save(f"{np.save_dir}layer{idx}_{param_name}_approx_grad.npy", approx_grad)
 
-        print("Saved gradients and approximations to .npy files.")
 
 class ANNRegression(ANNClassification):
-    def __init__(self, units, lambda_=0, n_iter=10000, verbose=False, activations=[]):
+    def __init__(self, units, lambda_=0, lr=1, n_iter=10000, verbose=False, activations=[]):
+        np.random.seed(42)
         super().__init__(units, lambda_, n_iter, verbose, activations)
         self.lambda_ = lambda_
         self.loss = MeanSquaredErrorLoss(self.lambda_)
-        self.optimizer = SGD_Optimizer(lr=.1)
+        self.optimizer = SGD_Optimizer(lr=lr)
         
     def weights(self):
         weights = []
@@ -399,11 +401,7 @@ class ANNRegression(ANNClassification):
                     print(self.optimizer.lr)
                     
             self.backward_pass(y, logits)
-            # for layer in self.layers:
-            #     print("Weights std:", np.std(layer.weights))
-            #     print("Biases std:", np.std(layer.biases))
-            #     print("dWeights std:", np.std(layer.dweights))
-            #     print("dBiases std:", np.std(layer.dbiases))
+            super().update_parameters()
             
             if i % 100 == 0:
                 self.optimizer.update_iter()
@@ -413,10 +411,10 @@ class ANNRegression(ANNClassification):
         self.units = [X.shape[1]] + self.units + [1]
         self.layers = []
         for i in range(len(self.units) - 1):
-            self.layers.append(Layer(self.units[i], self.units[i + 1], self.lambda_))
+            self.layers.append(Layer(self.units[i], self.units[i + 1], self.lambda_, relu=True))
             
         if len(self.activations) == 0:
-            self.activations = [ReLU_Activation() for _ in range(len(self.units) - 2)]
+            self.activations = [LeakyReLU_Activation() for _ in range(len(self.units) - 2)]
             
     def forward_pass(self, X):
         inp = X
@@ -438,8 +436,6 @@ class ANNRegression(ANNClassification):
             d = act.backward(d)
             d = layer.backward(d)
         
-        for layer in self.layers:
-            self.optimizer.update(layer)     
         
     def predict(self, X):
         return self.forward_pass(X).flatten()
@@ -447,26 +443,33 @@ class ANNRegression(ANNClassification):
 
 if __name__ == "__main__":
 
-    fitter = ANNClassification(n_iter=1,units=[5,5,5,5,5], verbose=True, lambda_=0)
-    # fitter = ANNRegression(units=[10,10,10], lambda_=.1, verbose=True)
-    X, y = squares()
+    # fitter = ANNClassification(units=[3], n_iter=5000, lr=1, verbose=True, lambda_=0)
+    fitter = ANNRegression(units=[10], lr=.1, n_iter=20000, lambda_=0, verbose=True)
+    # X, y = doughnut()
+    # X, y = squares()
+
+    X = np.linspace(-1, 1, 1000).reshape(-1, 1)
+    y = np.sin(X * 2 * np.pi) #+ np.random.normal(0, 0.1, X.shape)
+    
 
     fitter.fit(X, y)
     
+    # np.save("losses.npy", fitter.losses)
+    # np.save("accuracies.npy", fitter.accuracies)
+    pred = fitter.predict(X)
+    np.save("sin_pred.npy", pred)
     
-    # X, y = doughnut()
+    print(pred, y)
+    # np.mean(np.argmax(pred, axis=1) == y)
+    
+    exit()
     
     # np.save("fitted_cos.npy", fitter.layers[-1].output)
     
     
     # m = fitter.fit(X_train, y_train)
-    exit()
-    # pred = m.predict(X_test)
-    
-    # pred = np.argmax(pred, axis=1)
-    # print("Accuracy on test set:", np.mean(pred == y_test))
-    
     # exit()
+
     
     
     X = np.array([
@@ -476,11 +479,11 @@ if __name__ == "__main__":
     ], dtype=float)
     y = np.array([0, 1, 2])
     
-    X,y = doughnut()
-    print(X.shape, y.shape)
+    # X,y = doughnut()
+    # print(X.shape, y.shape)
     
     
-    exit()
+    # exit()
     model = fitter.fit(X, y)
     predictions = fitter.predict(X)
     print(predictions)
