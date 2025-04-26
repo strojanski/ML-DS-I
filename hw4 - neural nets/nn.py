@@ -213,7 +213,7 @@ class ANNClassification:
         self.layers = []
         self.n_iter = n_iter
         self.verbose = verbose
-        self.gradient_check = True
+        self.gradient_check = False
         self.epsilon = 1e-5
         
         
@@ -447,7 +447,7 @@ class ANNRegression(ANNClassification):
 
 if __name__ == "__main__":
 
-    fitter = ANNClassification(n_iter=4,units=[5,5,5], verbose=True, lambda_=0)
+    fitter = ANNClassification(n_iter=1,units=[5,5,5,5,5], verbose=True, lambda_=0)
     # fitter = ANNRegression(units=[10,10,10], lambda_=.1, verbose=True)
     X, y = squares()
 
