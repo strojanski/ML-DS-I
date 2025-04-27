@@ -3,6 +3,7 @@ import csv
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from sklearn.model_selection import KFold
 
 np.random.seed(42)
 
@@ -491,7 +492,6 @@ def train_torch(clf, optimizer, X, y, n_iter):
         
     return clf
 
-from sklearn.model_selection import KFold
 
         
 
