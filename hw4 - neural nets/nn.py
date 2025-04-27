@@ -477,21 +477,17 @@ def train_torch(clf, optimizer, X, y, n_iter):
         
         loss.backward()
         if i == 10:
-            # Save grads
             for idx, layer in enumerate(clf.linear_relu_stack):
                 if isinstance(layer, torch.nn.Linear):
                     for param_name, param in [('weights', layer.weight), ('biases', layer.bias)]:
                         grad = param.grad.detach().cpu().numpy()
                         np.save(f'torch_layer{idx}_{param_name}_grad.npy', grad)
 
-
-
         optimizer.step()
         
         print(f"Epoch {i+1}/{n_iter}, Loss: {loss.item():.4f}")
         
     return clf
-
 
         
 
@@ -557,7 +553,6 @@ if __name__ == "__main__":
     print(f"ANN mean loss: {np.mean(ann_losses):.4f}")
     print(f"Torch mean loss: {np.mean(torch_losses):.4f}")
 
-    
 
     exit()
     # np.save("losses.npy", fitter.losses)
