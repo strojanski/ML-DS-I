@@ -1,5 +1,8 @@
 import numpy as np
 import csv
+import torch
+import torch.nn as nn
+import torch.optim as optim
 
 np.random.seed(42)
 
@@ -203,7 +206,7 @@ def squares():
 
 
 class ANNClassification:
-    def __init__(self, units, lambda_=0, n_iter=10000, verbose=False, activations=[], decay=0.9999, lr=1):
+    def __init__(self, units, lambda_=0, n_iter=14000, verbose=False, activations=[], decay=1, lr=.1):
         np.random.seed(42)
         self.losses = []
         self.accuracies = []
@@ -262,7 +265,7 @@ class ANNClassification:
                     
             self.backward_pass(y)
             
-            if self.gradient_check and i == 0:
+            if self.gradient_check and i == 10:
                 self.check_gradients(X, y, self.epsilon)
                 
             self.update_parameters()   
@@ -353,12 +356,12 @@ class ANNClassification:
 
                 print(f"Layer {idx} {param_name} max relative error: {max_error:.2e}")
 
-                # np.save(f"{np.save_dir}layer{idx}_{param_name}_grad.npy", grad)
-                # np.save(f"{np.save_dir}layer{idx}_{param_name}_approx_grad.npy", approx_grad)
+                np.save(f"{np.save_dir}layer{idx}_{param_name}_grad.npy", grad)
+                np.save(f"{np.save_dir}layer{idx}_{param_name}_approx_grad.npy", approx_grad)
 
 
 class ANNRegression(ANNClassification):
-    def __init__(self, units, lambda_=0, lr=1, n_iter=10000, verbose=False, activations=[]):
+    def __init__(self, units, lambda_=0, lr=.1, n_iter=10000, verbose=False, activations=[]):
         np.random.seed(42)
         super().__init__(units, lambda_, n_iter, verbose, activations)
         self.lambda_ = lambda_
@@ -440,24 +443,127 @@ class ANNRegression(ANNClassification):
     def predict(self, X):
         return self.forward_pass(X).flatten()
     
+class ANN_Torch(nn.Module):
+    def __init__(self, input_dim, output_dim, hidden_units):
+        super().__init__()
+        
+        # A single hidden layer
+        self.linear_relu_stack = nn.Sequential(
+            nn.Linear(input_dim, hidden_units[0]),
+            nn.Sigmoid(),
+            nn.Linear(hidden_units[0], hidden_units[1]),
+            nn.Sigmoid(),
+            nn.Linear(hidden_units[1], output_dim)
+        )
+
+    def forward(self, x):
+        logits = self.linear_relu_stack(x)
+        return logits
+    
+    
+def train_torch(clf, optimizer, X, y, n_iter):
+    
+    X = torch.from_numpy(X)
+    y = torch.from_numpy(y)
+    
+    criterion = nn.CrossEntropyLoss()
+    for i in range(n_iter):
+        clf.train()
+        optimizer.zero_grad()
+        
+        logits = clf(X.float())
+        loss = criterion(logits, y.long())
+        
+        loss.backward()
+        if i == 10:
+            # Save grads
+            for idx, layer in enumerate(clf.linear_relu_stack):
+                if isinstance(layer, torch.nn.Linear):
+                    for param_name, param in [('weights', layer.weight), ('biases', layer.bias)]:
+                        grad = param.grad.detach().cpu().numpy()
+                        np.save(f'torch_layer{idx}_{param_name}_grad.npy', grad)
+
+
+
+        optimizer.step()
+        
+        print(f"Epoch {i+1}/{n_iter}, Loss: {loss.item():.4f}")
+        
+    return clf
+
+from sklearn.model_selection import KFold
+
+        
 
 if __name__ == "__main__":
 
-    # fitter = ANNClassification(units=[3], n_iter=5000, lr=1, verbose=True, lambda_=0)
-    fitter = ANNRegression(units=[10], lr=.1, n_iter=20000, lambda_=0, verbose=True)
-    # X, y = doughnut()
-    # X, y = squares()
-
-    X = np.linspace(-1, 1, 1000).reshape(-1, 1)
-    y = np.sin(X * 2 * np.pi) #+ np.random.normal(0, 0.1, X.shape)
+    n_iter = 1000
+    lr = 1e-3
     
 
-    fitter.fit(X, y)
+    # Define model and data
+    fitter = ANNClassification(units=[3, 3], n_iter=n_iter, lr=lr, verbose=False, lambda_=0)
+    X, y = squares()
+    X, y = doughnut()
+
+    # Shuffle once at the beginning
+    idxs = np.random.permutation(len(X))
+    X = X[idxs]
+    y = y[idxs]
+
+    # Setup 10-fold CV
+    kf = KFold(n_splits=10)
+
+    ann_accs = []
+    torch_accs = []
+    ann_losses = []
+    torch_losses = []
+
+    for train_idx, test_idx in kf.split(X):
+        X_train, y_train = X[train_idx], y[train_idx]
+        X_test, y_test = X[test_idx], y[test_idx]
+        
+        # ANNClassification
+        fitter = ANNClassification(units=[3, 3], n_iter=n_iter, lr=lr, verbose=False, lambda_=0)
+        fitter.fit(X_train, y_train)
+        probs = fitter.predict(X_test)
+        
+        # Torch Model
+        torch_fitter = ANN_Torch(X.shape[1], len(np.unique(y)), [3,3])
+        optimizer = optim.SGD(torch_fitter.parameters(), lr=lr)
+        torch_clf = train_torch(torch_fitter, optimizer, X_train, y_train, n_iter)
+        
+        torch_clf.eval()
+        logits = torch_clf(torch.from_numpy(X_test).float())
+        softmax = nn.Softmax(dim=1)
+        tprobs = softmax(logits)
+        
+        # Losses and accuracies
+        celoss = CategoricalCrossEntropyLoss(0)
+        
+        ann_loss = celoss.forward(probs, y_test)
+        torch_loss = celoss.forward(tprobs.detach().numpy(), y_test)
+        ann_acc = np.mean(np.argmax(probs, axis=1) == y_test)
+        torch_acc = np.mean(np.argmax(tprobs.detach().numpy(), axis=1) == y_test)
+        
+        ann_losses.append(ann_loss)
+        torch_losses.append(torch_loss)
+        ann_accs.append(ann_acc)
+        torch_accs.append(torch_acc)
+        break
+    # Summary
+    print(f"ANN mean accuracy: {np.mean(ann_accs):.4f}")
+    print(f"Torch mean accuracy: {np.mean(torch_accs):.4f}")
+    print(f"ANN mean loss: {np.mean(ann_losses):.4f}")
+    print(f"Torch mean loss: {np.mean(torch_losses):.4f}")
+
     
+
+    exit()
     # np.save("losses.npy", fitter.losses)
     # np.save("accuracies.npy", fitter.accuracies)
     pred = fitter.predict(X)
-    np.save("sin_pred.npy", pred)
+    np.save("exp.npy", pred)
     
     print(pred, y)
     # np.mean(np.argmax(pred, axis=1) == y)
