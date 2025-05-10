@@ -25,7 +25,7 @@ def ridge_regression(X, y, lmbda, kernel="polynomial", M=11):
     return alpha, kernel
 
    
-def svr(X, y, lmbda, kernel="polynomial", eps=1e-3, M=11):
+def svr(X, y, lmbda, kernel="polynomial", eps=1e-3, M=11, gamma=0.4):
     # 0.5 [alpha, alpha*].T @ P @ [alpha, alpha*] + q.T @ [alpha, alpha*]
     # K = similarity(X, X) in kernel space
     #
@@ -36,7 +36,7 @@ def svr(X, y, lmbda, kernel="polynomial", eps=1e-3, M=11):
     perm = np.array([i//2 + (i % 2) * l for i in range(2 * l)])
 
     K = polynomial_kernel if kernel=="polynomial" else rbf_kernel
-    K = K(X, X, M) if kernel == "polynomial" else K(X, X, gamma=1)
+    K = K(X, X, M) if kernel == "polynomial" else K(X, X, gamma=gamma)
     K = K.astype(np.double)
 
     # Quadratic term - 0.5 * [a a*].T @ P @ [a a*] = aKa - 2aKa* + a*Ka* => P = [K -K; -K K]
@@ -77,8 +77,12 @@ def svr(X, y, lmbda, kernel="polynomial", eps=1e-3, M=11):
     alpha_star = z[1::2]
 
     weights = alpha - alpha_star
-    support_vectors = np.where((alpha>1e-6) & (alpha<C-1e-6) &
-                  (alpha_star>1e-6) & (alpha_star<C-1e-6))[0]   # Nonzero
+    thresh = 1e-7
+    support_vectors = np.where((alpha>thresh) & (alpha<C-thresh) &
+                  (alpha_star>thresh) & (alpha_star<C-thresh))[0]   # Nonzero
+    print("Support Vectors:", support_vectors)
+    print("Alpha:", alpha)
+    print("Alpha*:", alpha_star)
 
     if support_vectors.size==0:
         sv = np.where(np.abs(weights)>1e-8)[0]  # If nothing found
@@ -171,7 +175,7 @@ if __name__ == "__main__":
     # lmbda = 0.001
 
 
-    alpha, alpha_star, b, predict = svr(X, y, lmbda=lmbda, kernel=kernel_, eps=0.05, M=M)
+    alpha, alpha_star, b, predict = svr(X, y, lmbda=lmbda, kernel=kernel_, eps=1e-5, M=M, gamma=1)
     
     y_pred = predict(X)
     
