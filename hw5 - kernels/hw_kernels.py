@@ -65,7 +65,6 @@ class KernelizedRidgeRegression:
     
     def fit(self, X, y):
         X, self.X_mean, self.X_std = standardize(X)
-        y, self.y_mean, self.y_std = standardize(y)
         
         K = self.kernel(X, X)
         self.X = X
@@ -80,8 +79,7 @@ class KernelizedRidgeRegression:
         X_new = (X_new - self.X_mean) / self.X_std
         K_new = self.kernel(X_new, self.X)
         y_pred = K_new @ self.alpha
-        return y_pred * self.y_std + self.y_mean
-    
+        return y_pred 
     
 class SVR:
     def __init__(self, kernel, lambda_, epsilon, threshold=1e-5):
@@ -99,8 +97,6 @@ class SVR:
     
     def fit(self, X, y):
         X, self.X_mean, self.X_std = standardize(X)
-        # y, self.y_mean, self.y_std = standardize(y)
-        # print(y, self.y_mean, self.y_std)
         
         self.X = X
         K = self.kernel(X, X)
@@ -143,7 +139,7 @@ class SVR:
         x = np.array(self.sol["x"]).flatten()
         self.bias = self.sol["y"][0]
         
-        self.alpha     =  x[::2]
+        self.alpha = x[::2]
         self.alpha_star = x[1::2]
         
         self.weights = self.alpha - self.alpha_star
@@ -151,7 +147,7 @@ class SVR:
         self.support_vectors = self.compute_sv()
         print(self.alpha, self.alpha_star)
 
-        return self#, matrix(P), matrix(q), matrix(G), matrix(h), matrix(A), matrix(b)
+        return self
 
     def compute_sv(self):
         sv = np.where(((self.alpha > self.threshold) & (self.alpha < self.C - self.threshold)) |
@@ -162,11 +158,11 @@ class SVR:
     def predict(self, X_new):
         X_new = (X_new - self.X_mean) / self.X_std
         
-        K_new = self.kernel(X_new, self.X)
-        y_pred = K_new @ (self.alpha - self.alpha_star) + float(self.bias)
+        K_new = self.kernel(X_new, self.X[self.support_vectors])
+        y_pred = K_new @ (self.alpha - self.alpha_star)[self.support_vectors] + float(self.bias)
         print(self.bias)
         
-        return y_pred # * self.y_std + self.y_mean 
+        return y_pred
 
 
 
@@ -176,24 +172,34 @@ if __name__ == "__main__":
     X = data[:, 0]
     y = data[:, 1]
     
-
     X = X.reshape(-1, 1)
     y = y.reshape(-1, 1)
     
     
     print(X.shape, y.shape)
-    # y = y.reshape(-1, 1)
     
-    kernel_ = "polynomial"
-    # best_params, best_score = krr_train_mse(X, y, kernel_type=kernel_)
-    # print(best_params, best_score)
-
-
+    kernel = RBF(sigma=0.5)
+    kernel = Polynomial(M=11, coef0=1)
+    _k = "RBF" if type(kernel) == RBF else "Polynomial"
+    
+    # ridge = KernelizedRidgeRegression(kernel=kernel, lambda_=1e-3, threshold=1e-4)
+    # ridge.fit(X, y)
+    # y_pred = ridge.predict(X)
+    
     # plt.scatter(X, y, label="Data")
-    # plt.scatter(X, y_plot, label=f"Kernel Ridge Regression ({kernel_})", color="red")
-    # plt.scatter(X[support_vectors], y[support_vectors], color="green", label="Support Vectors")
+    # plt.scatter(X, y_pred, label=f"Kernel Ridge Regression ({_k})", color="red")
+    # plt.scatter(X[ridge.support_vectors], y[ridge.support_vectors], color="green", label="Support Vectors")
     # plt.legend()
     # plt.show()
 
 
-
+    svr = SVR(kernel=kernel, lambda_=1e-5, epsilon=.85, threshold=1e-5)
+    svr.fit(X, y)
+    y_pred = svr.predict(X)
+    
+    print(len(svr.support_vectors))
+    plt.scatter(X, y, label="Data")
+    plt.scatter(X, y_pred, label=f"SVR ({_k})", color="red")
+    plt.scatter(X[svr.support_vectors], y[svr.support_vectors], color="green", label="Support Vectors")
+    plt.legend()
+    plt.show()
