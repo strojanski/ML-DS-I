@@ -373,7 +373,8 @@ if __name__ == "__main__":
     plt.ylabel("MSE")
     plt.yscale("log")
     plt.show()
-    
+    print("MSE poly", np.min(mse_lr_poly))
+    print("MSE poly inner", np.min(inner_mse_lr_poly_mean))
     
     inner_ms_svr_poly = np.load("scores/inner_mse_svr_poly.npy")
     inner_lambda_svr_poly = np.load("scores/inner_lambda_svr_poly.npy")
@@ -382,6 +383,9 @@ if __name__ == "__main__":
     inner_mse_svr_poly_mean = [np.mean(inner_ms_svr_poly[i:i+k]) for i in range(0, len(inner_ms_svr_poly), k)]
     inner_se_svr_poly_se = [np.std(inner_ms_svr_poly[i:i+k]) / np.sqrt(k) for i in range(0, len(inner_ms_svr_poly), k)]
     print(np.mean(inner_lambda_svr_poly))
+    
+    print("mse svm poly", np.min(mse_svr_poly))
+    print("mse svm poly inner", np.min(inner_ms_svr_poly))
     
     plt.plot(inner_mse_svr_poly_mean, label="SVR, nested CV", c="orange")
     plt.plot(mse_svr_poly, label="SVR, lambda=1", c="blue")
@@ -525,45 +529,50 @@ if __name__ == "__main__":
     # np.save("scores/se_svr_rbf.npy", se_svr_rbf_nocv)
     # np.save("scores/n_support_vectors_nocv_rbf.npy", n_support_vectors_nocv)
 
-    # inner_ms_lr_rbf = np.load("scores/inner_mse_lr_rbf.npy")
-    # mse_lr_rbf = np.load("scores/mse_lr_rbf.npy")
-    # se_lr_rbf = np.load("scores/se_lr_rbf.npy")
-    # inner_lambda_lr_rbf = np.load("scores/inner_lambda_lr_rbf.npy")
-    # inner_mse_lr_rbf_mean = [np.mean(inner_ms_lr_rbf[i:i+10]) for i in range(0, len(inner_ms_lr_rbf), 10)]
-    # inner_se_lr_rbf_se = [np.std(inner_ms_lr_rbf[i:i+10]) / np.sqrt(10) for i in range(0, len(inner_ms_lr_rbf), 10)]
+    inner_ms_lr_rbf = np.load("scores/inner_mse_lr_rbf.npy")
+    mse_lr_rbf = np.load("scores/mse_lr_rbf.npy")
+    se_lr_rbf = np.load("scores/se_lr_rbf.npy")
+    inner_lambda_lr_rbf = np.load("scores/inner_lambda_lr_rbf.npy")
+    inner_mse_lr_rbf_mean = [np.mean(inner_ms_lr_rbf[i:i+10]) for i in range(0, len(inner_ms_lr_rbf), 10)]
+    inner_se_lr_rbf_se = [np.std(inner_ms_lr_rbf[i:i+10]) / np.sqrt(10) for i in range(0, len(inner_ms_lr_rbf), 10)]
     
-    # print(inner_lambda_lr_rbf)
-    # print(mse_lr_rbf)
+    print(inner_lambda_lr_rbf)
+    print(mse_lr_rbf)
     
-    # plt.plot(inner_mse_lr_rbf_mean, label="Ridge Regression, nested CV", c="orange")
-    # plt.plot(mse_lr_rbf, label="Ridge Regression, lambda=1", c="blue")
-    # plt.errorbar(range(len(inner_mse_lr_rbf_mean)), inner_mse_lr_rbf_mean, yerr=inner_se_lr_rbf_se, fmt='o', c="orange")
-    # plt.errorbar(range(len(mse_lr_rbf)), mse_lr_rbf, yerr=se_lr_rbf, fmt='o', c="blue")
-    # plt.legend()
-    # plt.xlabel("Sigma")
-    # plt.xticks(range(len(inner_mse_lr_rbf_mean)), sigmas)
-    # plt.ylabel("MSE")
-    # plt.show()
+    plt.plot(inner_mse_lr_rbf_mean, label="Ridge Regression, nested CV", c="orange")
+    plt.plot(mse_lr_rbf, label="Ridge Regression, lambda=1", c="blue")
+    plt.errorbar(range(len(inner_mse_lr_rbf_mean)), inner_mse_lr_rbf_mean, yerr=inner_se_lr_rbf_se, fmt='o', c="orange")
+    plt.errorbar(range(len(mse_lr_rbf)), mse_lr_rbf, yerr=se_lr_rbf, fmt='o', c="blue")
+    plt.legend()
+    plt.xlabel("Sigma")
+    plt.xticks(range(len(inner_mse_lr_rbf_mean)), sigmas)
+    plt.ylabel("MSE")
+    plt.show()
     
+
+    inner_ms_svr_rbf = np.load("scores/inner_mse_svr_rbf.npy")
+    inner_lambda_svr_rbf = np.load("scores/inner_lambda_svr_rbf.npy")
+    mse_svr_rbf = np.load("scores/mse_svr_rbf.npy")
+    se_svr_rbf = np.load("scores/se_svr_rbf.npy")
+    inner_mse_svr_rbf_mean = [np.mean(inner_ms_svr_rbf[i:i+10]) for i in range(0, len(inner_ms_svr_rbf), 10)]
+    inner_se_svr_rbf_se = [np.std(inner_ms_svr_rbf[i:i+10]) / np.sqrt(10) for i in range(0, len(inner_ms_svr_rbf), 10)]
+    print(np.mean(inner_lambda_svr_rbf))
+    print("RBF MIN (2x inner 2x outer)")
+    print(np.min(inner_mse_lr_rbf_mean))
+    print(np.min(inner_mse_svr_rbf_mean))
+    print(np.min(mse_lr_rbf))
+    print(np.min(mse_svr_rbf))
     
-    # inner_ms_svr_rbf = np.load("scores/inner_mse_svr_rbf.npy")
-    # inner_lambda_svr_rbf = np.load("scores/inner_lambda_svr_rbf.npy")
-    # mse_svr_rbf = np.load("scores/mse_svr_rbf.npy")
-    # se_svr_rbf = np.load("scores/se_svr_rbf.npy")
-    # inner_mse_svr_rbf_mean = [np.mean(inner_ms_svr_rbf[i:i+10]) for i in range(0, len(inner_ms_svr_rbf), 10)]
-    # inner_se_svr_rbf_se = [np.std(inner_ms_svr_rbf[i:i+10]) / np.sqrt(10) for i in range(0, len(inner_ms_svr_rbf), 10)]
-    # print(np.mean(inner_lambda_svr_rbf))
-    
-    # plt.plot(inner_mse_svr_rbf_mean, label="SVR, nested CV", c="orange")
-    # plt.plot(mse_svr_rbf, label="SVR, lambda=1", c="blue")
-    # plt.errorbar(range(len(inner_mse_svr_rbf_mean)), inner_mse_svr_rbf_mean, yerr=inner_se_svr_rbf_se, fmt='o', c="orange")
-    # plt.errorbar(range(len(mse_svr_rbf)), mse_svr_rbf, yerr=se_svr_rbf, fmt='o', c="blue")
-    # plt.legend()
-    # plt.xlabel("Sigma")
-    # plt.xticks(range(len(inner_mse_lr_rbf_mean)), sigmas)
-    # plt.yscale("log")
-    # plt.ylabel("MSE")
-    # plt.show()
+    plt.plot(inner_mse_svr_rbf_mean, label="SVR, nested CV", c="orange")
+    plt.plot(mse_svr_rbf, label="SVR, lambda=1", c="blue")
+    plt.errorbar(range(len(inner_mse_svr_rbf_mean)), inner_mse_svr_rbf_mean, yerr=inner_se_svr_rbf_se, fmt='o', c="orange")
+    plt.errorbar(range(len(mse_svr_rbf)), mse_svr_rbf, yerr=se_svr_rbf, fmt='o', c="blue")
+    plt.legend()
+    plt.xlabel("Sigma")
+    plt.xticks(range(len(inner_mse_lr_rbf_mean)), sigmas)
+    plt.yscale("log")
+    plt.ylabel("MSE")
+    plt.show()
 
     lambda_lr = np.load("scores/inner_lambda_lr_rbf.npy")
     lambda_svr = np.load("scores/inner_lambda_svr_rbf.npy")
