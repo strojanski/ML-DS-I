@@ -57,7 +57,7 @@ class RBF:
 
     
 class KernelizedRidgeRegression:
-    def __init__(self, kernel, lambda_, threshold=1e-6):
+    def __init__(self, kernel, lambda_, threshold=1e-5):
         self.kernel = kernel
         self.lambda_ = lambda_
         self.threshold = threshold
@@ -74,7 +74,7 @@ class KernelizedRidgeRegression:
         return self
     
     def fit(self, X, y):
-        X, self.X_mean, self.X_std = standardize(X)
+        # X, self.X_mean, self.X_std = standardize(X)
         
         K = self.kernel(X, X)
         self.X = X
@@ -86,7 +86,7 @@ class KernelizedRidgeRegression:
         return self
 
     def predict(self, X_new):
-        X_new = (X_new - self.X_mean) / self.X_std
+        # X_new = (X_new - self.X_mean) / self.X_std
         K_new = self.kernel(X_new, self.X)
         y_pred = K_new @ self.alpha
         return y_pred 
